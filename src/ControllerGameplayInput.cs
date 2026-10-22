@@ -13,6 +13,8 @@ namespace ControllerSupport
         private static BindingConfig bindings;
         private static int frame = -1;
         private static int inventoryInputFrame = -1;
+        private static int actionInputFrame = -1;
+        private static string consumedAction;
         private static JoystickInputState state;
         private static bool left, right, up, down;
         private static bool leftPressed, rightPressed, downPressed;
@@ -41,7 +43,8 @@ namespace ControllerSupport
         private static void ResetFrame()
         {
             frame = -1;
-            inventoryInputFrame = -1;
+            inventoryInputFrame = actionInputFrame = -1;
+            consumedAction = null;
             state = null;
             left = right = up = down = false;
             leftPressed = rightPressed = downPressed = false;
@@ -96,10 +99,13 @@ namespace ControllerSupport
             leftReleased = rightReleased = upReleased = downReleased = false;
         }
 
+        // Native PlayerScript allows jump, dash and attack during dialogue;
+        // it retains its own immobile/beaming/cooldown restrictions. Combat
+        // switching and NPC interaction have separate native talking guards.
         private static bool SafeActions()
         {
             return !GameScript.pausing && !GameScript.dead && !GameScript.buildMode &&
-                   !GameScript.inventoryOpen && !GameScript.talking && inventoryInputFrame != Time.frameCount;
+                   !GameScript.inventoryOpen && inventoryInputFrame != Time.frameCount;
         }
 
         private static bool BoundHeld(string action) { return Bound(action, 0); }
@@ -117,6 +123,28 @@ namespace ControllerSupport
         {
             inventoryInputFrame = Time.frameCount;
             ControllerGameplayActions.ConsumeForFrame();
+        }
+
+        // Dialogue owns its configured Interact binding, not the inventory or
+        // every gameplay input. Shared bindings must not activate twice.
+        internal static void ConsumeActionForFrame(string action)
+        {
+            actionInputFrame = Time.frameCount;
+            consumedAction = action;
+        }
+
+        internal static bool IsActionConsumed(string action)
+        {
+            return actionInputFrame == Time.frameCount && bindings != null &&
+                consumedAction != null && bindings[consumedAction] != "Unbound" &&
+                bindings[action] == bindings[consumedAction];
+        }
+
+        internal static bool PhysicalButtonConsumed(int button)
+        {
+            return actionInputFrame == Time.frameCount && bindings != null &&
+                consumedAction != null && Refresh() && PhysicalButtonActive(button) &&
+                bindings[consumedAction] == "Joystick1Button" + button;
         }
 
         private static bool InventoryOwnsInput()
@@ -139,7 +167,7 @@ namespace ControllerSupport
 
         private static bool Bound(string action, int kind)
         {
-            return bindings != null && (kind == 1 ? bindings.Pressed(action, state) : bindings.Held(action, state));
+            return bindings != null && !IsActionConsumed(action) && (kind == 1 ? bindings.Pressed(action, state) : bindings.Held(action, state));
         }
 
         // These signatures deliberately mirror the Unity calls replaced by
@@ -223,7 +251,9 @@ namespace ControllerSupport
             float vanilla = Input.GetAxis(name);
             if (name == "Horizontal" && Refresh() && Math.Abs(state.MoveX) > DirectionThreshold)
                 return state.MoveX;
-            if (name == "Attack" && Refresh() && MenuInputHeld()) return 0f;
+            if (name == "Attack" && Refresh() && (MenuInputHeld() ||
+                (actionInputFrame == Time.frameCount && consumedAction != null &&
+                 bindings != null && bindings[consumedAction] == "RightTrigger" && state.RightTriggerHeld))) return 0f;
             if (name != "Attack" || !Refresh() || !SafeActions() || !GameScript.combatMode ||
                 attackRequiresRelease || !BoundHeld("PrimaryAction")) return vanilla;
             // Existing PlayerScript.Update tests Attack < 0 and starts its
@@ -253,10 +283,10 @@ namespace ControllerSupport
             }
             if (name == "CombatMode")
             {
-                bool keyboard = vanilla && !(InventoryOwnsInput() &&
+                bool keyboard = vanilla && !PhysicalButtonConsumed(3) && !(InventoryOwnsInput() &&
                     (state.ButtonHeld(3) || MenuInputHeld()));
                 // Build Mode shares this input with tile destruction.
-                return keyboard || (SafeActions() && MenuScript.player && BoundPressed("CombatMode"));
+                return keyboard || (SafeActions() && !GameScript.talking && MenuScript.player && BoundPressed("CombatMode"));
             }
             return vanilla;
         }
@@ -288,7 +318,7 @@ namespace ControllerSupport
         internal static bool GameDroidButtonDown(string name, GameScript game)
         {
             bool vanilla = Input.GetButtonDown(name);
-            return vanilla && !(Refresh() && InventoryOwnsInput() &&
+            return vanilla && !(Refresh() && PhysicalButtonConsumed(5)) && !(Refresh() && InventoryOwnsInput() &&
                 (state.ButtonHeld(5) || MenuInputHeld())) &&
                 !ControllerExploration.SuppressControllerDroidButton(game);
         }

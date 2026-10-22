@@ -10,6 +10,7 @@ internal static class Program
     private static JoystickInputState pad;
     private static GameScript game;
     private static PlayerScript localPlayer;
+    private static int assistToggles;
 
     private static void Check(bool value, string message)
     {
@@ -21,13 +22,19 @@ internal static class Program
         pad.Apply(new RawJoystickEvent { Type = 1, Number = (byte)button,
             Value = (short)(held ? 1 : 0), TimeMilliseconds = ++timestamp });
     }
+    private static void Axis(int axis, short value)
+    {
+        pad.Apply(new RawJoystickEvent { Type = 2, Number = (byte)axis,
+            Value = value, TimeMilliseconds = ++timestamp });
+    }
     private static void Tick(Action input = null)
     {
         Time.frameCount++;
-        pad.BeginFrame(); Input.Down.Clear(); Input.MouseDown.Clear();
+        pad.BeginFrame(); Input.Down.Clear(); Input.MouseDown.Clear(); Input.Axes.Clear();
         if (input != null) input();
         ControllerDialogueInput.Prepare(game);
         ControllerGameplayActions.Prepare(game);
+        ControllerGameplayInput.PlayerAxis("Attack"); // Native player reads this each Update.
     }
     private static void Setup(string text = null)
     {
@@ -38,12 +45,99 @@ internal static class Program
         GameScript.talking = true; MenuTalking.isWriting = true;
         var config = BindingConfig.Parse((text ?? BindingConfig.DefaultText).Split('\n'));
         ControllerGameplayInput.Configure(() => pad, config);
-        ControllerGameplayActions.Configure(() => pad, config);
+        assistToggles = 0;
+        ControllerGameplayActions.Configure(() => pad, config, () => assistToggles++);
         ControllerDialogueInput.Configure(() => pad, config);
         Tick();
     }
     private static void Main()
     {
+        // Native EnterTalking2 uses this panel without setting talking or immobilizing
+        // the player. Exercise the real shared gameplay adapter, not fake flags.
+        Setup(); GameScript.talking = false; Tick();
+        Tick(() => { Axis(0, short.MaxValue); Axis(2, short.MaxValue); Button(4, true); });
+        Check(ControllerGameplayInput.PlayerButton("Right"), "timed popup preserves horizontal movement");
+        Check(ControllerGameplayInput.PlayerButtonDown("Jump"), "timed popup preserves controller jump");
+        Check(ControllerGameplayInput.PlayerButtonDown("Dash Right"), "timed popup preserves controller dash");
+        Setup(); GameScript.talking = false; GameScript.combatMode = true; Tick();
+        Tick(() => Axis(5, short.MaxValue));
+        Check(ControllerGameplayInput.PlayerAxis("Attack") < 0, "timed popup preserves controller attack");
+        Setup(); GameScript.talking = false; Tick(); Tick(() => Button(0, true));
+        Check(ControllerGameplayInput.GameButtonDown("UseItem5"), "timed popup preserves controller hotkey");
+        Setup(); GameScript.talking = false; Tick(); Tick(() => Button(3, true));
+        Check(ControllerGameplayInput.GameButtonDown("CombatMode"), "timed popup preserves combat-mode switch");
+        Setup(); GameScript.talking = false; Tick(); Tick(() => Button(7, true));
+        Check(ControllerGameplayInput.GamePausePressed(), "timed popup preserves controller pause");
+
+        foreach (bool nativeConversation in new[] { false, true })
+        {
+            Setup(); GameScript.talking = nativeConversation; GameScript.combatMode = true; Tick();
+            Tick(() => { Button(2, true); Button(0, true); Button(9, true); Axis(0, short.MaxValue);
+                Axis(2, short.MaxValue); Axis(5, short.MaxValue); Button(4, true); });
+            Check(game.menuTalking.Clicks == 1, "Interact still reveals with simultaneous gameplay inputs");
+            Check(ControllerGameplayInput.PlayerButtonDown("Jump") &&
+                ControllerGameplayInput.PlayerButtonDown("Dash Right"), "dialogue preserves jump/dash, talking=" + nativeConversation);
+            Check(ControllerGameplayInput.PlayerAxis("Attack") < 0, "dialogue preserves attack, talking=" + nativeConversation);
+            Check(ControllerGameplayInput.GameButtonDown("UseItem5") && assistToggles == 1,
+                "dialogue preserves independent hotkey/assist, talking=" + nativeConversation);
+            Tick(); Check(ControllerGameplayInput.PlayerAxis("Attack") < 0,
+                "dialogue does not interrupt held attack after reveal");
+            Check(!ControllerGameplayInput.PlayerInteractionButtonDown("Up", localPlayer),
+                "revealing dialogue never also interacts with NPC");
+        }
+        Setup(); Tick(() => Button(3, true));
+        Check(!ControllerGameplayInput.GameButtonDown("CombatMode"), "native NPC conversation still gates combat switching");
+        Setup(); Tick(() => { Input.Down.Add("Jump"); Input.Down.Add("CombatMode"); });
+        Check(ControllerGameplayInput.PlayerButtonDown("Jump") && ControllerGameplayInput.GameButtonDown("CombatMode"),
+            "physical keyboard keeps native reads for caller-owned restrictions");
+        Setup(); Tick(() => { Axis(0, short.MaxValue); Axis(2, short.MaxValue); });
+        GameScript.pausing = true;
+        Check(!ControllerGameplayInput.PlayerButtonDown("Jump"), "real pause still gates controller jump");
+
+        // Configuration forbids same-context duplicates. Reassign the old
+        // owner when moving Interact onto a native legacy controller input.
+        Setup(BindingConfig.DefaultText.Replace("Interact = Joystick1Button2", "Interact = Joystick1Button3")
+            .Replace("CombatMode = Joystick1Button3", "CombatMode = Joystick1Button12"));
+        GameScript.talking = false; Tick();
+        Tick(() => { Button(3, true); Button(0, true); Input.Down.Add("CombatMode"); });
+        Check(game.menuTalking.Clicks == 1 && !ControllerGameplayInput.GameButtonDown("CombatMode"),
+            "remapped Y reveals without legacy mode-switch leak");
+        Check(ControllerGameplayInput.GameButtonDown("UseItem5"), "consumed legacy Y does not block unrelated A hotkey");
+
+        Setup(BindingConfig.DefaultText.Replace("Interact = Joystick1Button2", "Interact = RightTrigger")
+            .Replace("PrimaryAction = RightTrigger", "PrimaryAction = Joystick1Button12"));
+        GameScript.talking = false; GameScript.combatMode = true; Tick();
+        Tick(() => { Axis(5, short.MaxValue); Input.Axes["Attack"] = -1; });
+        Check(game.menuTalking.Clicks == 1 && ControllerGameplayInput.PlayerAxis("Attack") == 0,
+            "remapped RT reveals without native attack-axis leak");
+        MenuTalking.isWriting = false; game.CloseOnTalk = true; Tick(() => Axis(5, short.MinValue));
+        Tick(() => Axis(5, short.MaxValue)); Tick(() => { Input.Axes["Attack"] = -1; Axis(2, short.MaxValue); });
+        Check(ControllerGameplayInput.PlayerAxis("Attack") == 0 && ControllerGameplayInput.PlayerButtonDown("Jump"),
+            "held closing RT remains consumed while independent jump works");
+        Tick(() => Axis(5, short.MinValue)); Tick(() => Button(12, true));
+        Check(ControllerGameplayInput.PlayerAxis("Attack") < 0, "new configured attack works after close release");
+
+        Setup(BindingConfig.DefaultText.Replace("Interact = Joystick1Button2", "Interact = Joystick1Button5"));
+        GameScript.talking = false; Tick();
+        Tick(() => { Button(5, true); Input.Down.Add("Droid"); Button(0, true); });
+        Check(game.menuTalking.Clicks == 1 && !ControllerGameplayInput.GameDroidButtonDown("Droid", game),
+            "remapped RB reveals without native droid activation");
+        Check(ControllerGameplayInput.GameButtonDown("UseItem5"), "remapped RB leaves unrelated hotkey active");
+        Setup(BindingConfig.DefaultText.Replace("Interact = Joystick1Button2", "Interact = Joystick1Button1")
+            .Replace("Hotkey6 = Joystick1Button1", "Hotkey6 = Joystick1Button12"));
+        GameScript.talking = false; Tick();
+        Tick(() => { Button(1, true); Input.Down.Add("Cancel"); });
+        Check(game.menuTalking.Clicks == 1 && !ControllerGameplayInput.GameButtonDown("Cancel"),
+            "remapped B reveals without legacy cancel activation");
+        Setup(); GameScript.talking = false; Tick();
+        MenuTalking.isWriting = false; game.CloseOnTalk = true;
+        Tick(() => { Button(2, true); Button(0, true); });
+        Check(game.Talks == 1 && ControllerGameplayInput.GameButtonDown("UseItem5"),
+            "closing X consumes only Interact and permits simultaneous independent A");
+        Tick(() => { Axis(2, short.MaxValue); Button(3, true); });
+        Check(ControllerGameplayInput.PlayerButtonDown("Jump") && ControllerGameplayInput.GameButtonDown("CombatMode"),
+            "held closing X does not hold unrelated movement or mode-switch hostage");
+
         Setup(); Tick(() => Button(2, true));
         Check(game.menuTalking.Clicks == 1 && game.Talks == 0, "X reveals writing without advancing");
         ControllerDialogueInput.Prepare(game);
@@ -74,8 +168,8 @@ internal static class Program
         Tick(() => Button(2, false)); MenuTalking.isWriting = false; game.CloseOnTalk = true;
         Tick(() => { Button(2, true); Button(0, true); Button(3, true); Input.Down.Add("CombatMode"); });
         Check(game.Talks == 1 && !game.menuTalking.activeInHierarchy, "last advance uses native close");
-        Check(!ControllerGameplayInput.GameButtonDown("UseItem5"), "close frame cannot trigger hotkey");
-        Check(!ControllerGameplayInput.GameButtonDown("CombatMode"), "close frame cannot toggle combat");
+        Check(!ControllerGameplayInput.GameButtonDown("UseItem5"), "simultaneous mode-switch preserves existing hotkey gate");
+        Check(ControllerGameplayInput.GameButtonDown("CombatMode"), "close frame preserves independent combat-mode press");
         Tick(); Check(!ControllerGameplayInput.PlayerInteractionButtonDown("Up", localPlayer),
             "held close press remains consumed after popup disappears");
         Tick(() => Button(2, false)); Tick(() => Button(2, true));

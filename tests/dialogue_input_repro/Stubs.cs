@@ -7,12 +7,13 @@ namespace UnityEngine
     public static class Input
     {
         public static readonly HashSet<string> Down = new HashSet<string>();
+        public static readonly Dictionary<string, float> Axes = new Dictionary<string, float>();
         public static readonly HashSet<int> MouseDown = new HashSet<int>();
         public static bool GetMouseButtonDown(int button) { return MouseDown.Contains(button); }
         public static bool GetButtonDown(string name) { return Down.Contains(name); }
         public static bool GetButton(string name) { return false; }
         public static bool GetButtonUp(string name) { return false; }
-        public static float GetAxis(string name) { return 0; }
+        public static float GetAxis(string name) { return Axes.TryGetValue(name, out float value) ? value : 0; }
     }
     public class GameObject
     {

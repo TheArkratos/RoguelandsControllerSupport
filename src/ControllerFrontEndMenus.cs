@@ -36,6 +36,8 @@ namespace ControllerSupport
         private static bool navigationRequiresRelease;
         private static float nextRepeatAt;
         private static bool activeNativeUpdate;
+        private static BoxCollider resizedCharacterSlot;
+        private static Vector3 originalCharacterSlotSize;
 
         internal static Collider SelectedCollider { get { return selected; } }
 
@@ -50,6 +52,7 @@ namespace ControllerSupport
 
         internal static void Reset()
         {
+            RestoreCharacterHitbox();
             if (corners != null) corners.Dispose();
             corners = null;
             owner = null;
@@ -162,10 +165,13 @@ namespace ControllerSupport
             try
             {
                 bool changed = owner != nextOwner || menuRoot != root;
+                if (changed) RestoreCharacterHitbox();
                 owner = nextOwner;
                 menuRoot = root;
                 activeNativeUpdate = true;
                 Collect(root, names, stuffGrid);
+                Menuu title = nextOwner as Menuu;
+                if (title != null && root == title.menuCharSelect) NormalizeCharacterHitbox();
                 if (changed)
                 {
                     selected = null;
@@ -175,7 +181,6 @@ namespace ControllerSupport
                     heldDirection = 0;
                 }
                 if (!Contains(selected)) selected = choices.Count > 0 ? choices[0] : null;
-                Menuu title = nextOwner as Menuu;
                 bool characterEntry = changed && title != null && root == title.menuCharSelect;
                 if (characterEntry)
                 {
@@ -309,6 +314,43 @@ namespace ControllerSupport
                 }
                 if (permitted) choices.Add(collider);
             }
+        }
+
+        private static void NormalizeCharacterHitbox()
+        {
+            BoxCollider target = choices.Find(c => c.gameObject.name == "bs5" &&
+                c is BoxCollider) as BoxCollider;
+            if (!target) return;
+            BoxCollider peer = null;
+            for (int slot = 0; slot < 5 && !peer; slot++)
+            {
+                string name = "bs" + slot.ToString(CultureInfo.InvariantCulture);
+                peer = choices.Find(c => c.gameObject.name == name && c is BoxCollider &&
+                    ValidCharacterSize(((BoxCollider)c).size)) as BoxCollider;
+            }
+            if (!peer) return;
+            // The native sixth card has a larger collider than the other five.
+            // Change the real click area so both mouse hits and corner bounds agree.
+            if (resizedCharacterSlot != target)
+            {
+                RestoreCharacterHitbox();
+                resizedCharacterSlot = target;
+                originalCharacterSlotSize = target.size;
+            }
+            Vector3 size = target.size;
+            target.size = new Vector3(peer.size.x, peer.size.y, size.z);
+        }
+
+        private static bool ValidCharacterSize(Vector3 size)
+        {
+            return size.x > 0f && !float.IsInfinity(size.x) &&
+                size.y > 0f && !float.IsInfinity(size.y);
+        }
+
+        private static void RestoreCharacterHitbox()
+        {
+            if (resizedCharacterSlot) resizedCharacterSlot.size = originalCharacterSlotSize;
+            resizedCharacterSlot = null;
         }
 
         private static Collider UnderPhysicalMouse(Vector3 mouse)
@@ -483,6 +525,7 @@ namespace ControllerSupport
 
         private static void Clear()
         {
+            RestoreCharacterHitbox();
             owner = null;
             menuRoot = null;
             selected = null;

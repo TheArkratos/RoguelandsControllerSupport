@@ -88,8 +88,14 @@ internal static class Program
         }
         ControllerMenuSelection.EndNativeUpdate(); ControllerMenuSelection.Update(game);
     }
-    private static void Main()
+    private static void Main(string[] args)
     {
+        if (Array.IndexOf(args,"--idle-craft-errors") >= 0)
+        {
+            IdleCraftErrors();
+            return;
+        }
+        CraftValidation();
         StoragePaging();
         Setup(); game.inventory[6]=new Item{id=21,q=8}; Press(0);
         Check(Left&&!Right,"Ordinary inventory A left-click");
@@ -267,6 +273,58 @@ internal static class Program
         pad.BeginFrame(); Frame(); ControllerMenuSelection.EndNativeUpdate();
     }
 
+    private static void IdleCraftErrors()
+    {
+        Setup();
+        game.menuCraft=new GameObject("craft");
+        game.inventory[6]=new Item{id=102,q=1};
+        game.CraftItems=new[]{new Item{id=101,q=1},new Item(),new Item()};
+        for(int i=0;i<1000;i++)
+        {
+            pad.BeginFrame(); Frame();
+            ControllerMenuSelection.Update(game);
+            ControllerMenuSelection.EndNativeUpdate();
+        }
+        Console.WriteLine("Idle frames=1000, input presses=0, native validation calls="+
+            game.CraftEligibilityCalls+", native same-tier errors="+game.NativeSameTierErrors+
+            ", craft transfers="+game.TransferCraftCalls);
+        Check(game.NativeSameTierErrors==0,
+            "Idle hint rendering must not emit Emblems must be the same tier! errors");
+        Check(game.CraftEligibilityCalls==0,"Idle hints must not invoke side-effecting native validation");
+        Check(InventoryFeedback.Transfer,"Crafting hints offer the action without duplicating native rules");
+    }
+    private static void CraftValidation()
+    {
+        IdleCraftErrors();
+        Press(3);
+        Check(game.CraftEligibilityCalls==1 && game.NativeSameTierErrors==1,
+            "A deliberate invalid transfer validates once and emits one native tier error");
+        Check(game.TransferCraftCalls==0 && game.inventory[6].id==102,
+            "Native rejection preserves the source and prevents crafting transfer");
+        Check(InventoryFeedback.LastReason=="Emblems must have the same tier" && InventoryItemLifecycle.SoundCalls==1,
+            "Exact native rejection remains visible with one feedback sound");
+        for(int i=0;i<10;i++)
+        {
+            ControllerMenuSelection.EndNativeUpdate(); pad.BeginFrame(); Frame();
+            ControllerMenuSelection.Update(game);
+        }
+        Check(game.CraftEligibilityCalls==1 && game.NativeSameTierErrors==1,
+            "Holding transfer and refreshing hints cannot replay rejection");
+        Release(3); Press(3);
+        Check(game.CraftEligibilityCalls==2 && game.NativeSameTierErrors==2,
+            "A fresh invalid press can receive native rejection again");
+        Release(3);
+        game.CraftItems[0]=new Item{id=112,q=1};
+        Press(3);
+        Check(game.CraftEligibilityCalls==3 && game.TransferCraftCalls==1 && game.inventory[6].id==0,
+            "Valid transfer validates once then invokes native mutation without rechecking");
+        Release(3);
+        Setup(); game.menuCraft=new GameObject("craft"); game.inventory[6]=new Item{id=102,q=4};
+        Press(0); Native(6);
+        Check(game.CraftEligibilityCalls==0,"Ordinary inventory pickup does not validate crafting");
+        Release(0); Press(2); Native(6);
+        Check(game.CraftEligibilityCalls==0,"Place-one does not validate crafting");
+    }
     private static void StoragePaging()
     {
         Setup(true); Pages(11);

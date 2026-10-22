@@ -25,12 +25,11 @@ class Program {
    Setup(combat);Tick(()=>Axis(7,short.MinValue));Check(Hotkey(1),"up activates slot1");Tick(()=>Axis(6,short.MaxValue));Check(!Hotkey(2),"diagonal roll cannot activate right");Tick(()=>Axis(7,0));Check(!Hotkey(2),"first-direction latch survives partial release");Tick(()=>Axis(6,0));Tick(()=>Axis(6,short.MaxValue));Check(Hotkey(2),"neutral then right activates slot2");
    Tick(()=>Axis(6,0));Tick(()=>Axis(7,short.MaxValue));Check(Hotkey(3),"down activates slot3");Tick(()=>Axis(7,0));Tick(()=>Axis(6,short.MinValue));Check(Hotkey(4),"left activates slot4");
   }
-  foreach(string context in new[]{"inventory","pause","dead","talking","build","beaming","freeze","remote","missingplayer"}){
+  foreach(string context in new[]{"inventory","pause","dead","build","beaming","freeze","remote","missingplayer"}){
    Setup(true);
    if(context=="inventory")GameScript.inventoryOpen=true;
    if(context=="pause")GameScript.pausing=true;
    if(context=="dead")GameScript.dead=true;
-   if(context=="talking")GameScript.talking=true;
    if(context=="build")GameScript.buildMode=true;
    if(context=="beaming")PlayerScript.beaming=true;
    if(context=="freeze")GadgetCoreAPI.Frozen=true;
@@ -38,6 +37,8 @@ class Program {
    if(context=="missingplayer")MenuScript.player=null;
    Tick(()=>{Button(0,true);Button(9,true);});Check(!Hotkey(5)&&toggles==0,"hotkeys and assist toggle blocked in "+context);
   }
+  Setup(true);GameScript.talking=true;Tick(()=>{Button(0,true);Button(9,true);});
+  Check(Hotkey(5)&&toggles==1,"native NPC dialogue does not blanket-block hotkeys or assist toggle");
   Setup();GameScript.inventoryOpen=true;Tick(()=>Button(0,true));GameScript.inventoryOpen=false;Tick();Check(!Hotkey(5),"closing UI with A held requires release");Tick(()=>Button(0,false));Tick(()=>Button(0,true));Check(Hotkey(5),"released UI A can activate new gameplay press");
   Setup();Tick(()=>Button(0,true));ControllerGameplayInput.ConsumeInventoryInput();Check(!Hotkey(5),"same-frame UI consumption invalidates queued action");
   Setup();Tick(()=>{Button(0,true);Button(3,true);});Check(!Hotkey(5),"mode-toggle press suppresses simultaneous hotkey");GameScript.combatMode=true;Tick();Check(!Hotkey(5),"held hotkey cannot carry through mode switch");

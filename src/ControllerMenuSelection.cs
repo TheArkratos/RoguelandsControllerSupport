@@ -262,9 +262,24 @@ namespace ControllerSupport
                 if (HasItem(heldItem) && !navigator.SelectedIsStoragePage &&
                     !navigator.SelectedIsStorageUpgrade && !EligibleInventorySlot(index, heldItem))
                 { Reject(game, "Wrong item type"); repeating = false; repeatBlocked = true; return; }
-                if (pressed[2] && (HasItem(heldItem) || !CanTransfer(game, index, target)))
+                if (pressed[2] && (HasItem(heldItem) || !CanOfferTransfer(game, index, target)))
                 { Reject(game, "No transfer available"); return; }
                 if (!ValidateRay(candidate)) return;
+                if (pressed[2] && !StorageOpen(game))
+                {
+                    // Native Update validates once before ShiftClick2. This call
+                    // can emit Error, so it belongs to the deliberate action,
+                    // never the per-frame hint eligibility path.
+                    bool allowed;
+                    storageClick = true;
+                    try { allowed = game.CanPlaceCraft(target.id); }
+                    finally { storageClick = false; }
+                    if (!allowed)
+                    {
+                        if (nativeErrorFrame != Time.frameCount) Reject(game, "No transfer available");
+                        return;
+                    }
+                }
                 if (navigator.SelectedIsStorageUpgrade && !UpgradeAvailable(game))
                 { Reject(game, "Not enough Credits or storage is fully upgraded"); return; }
                 controllerOwnsSelection = true;
@@ -385,7 +400,7 @@ namespace ControllerSupport
                 Item target = ReadTarget(game, navigator.SelectedSlot);
                 Describe(game, navigator.SelectedSlot, held, target, out primary, out secondary);
                 InventoryFeedback.SetContext(game, selected, controllerOwnsSelection && !InventoryItemLifecycle.MutationsBlocked(game), bindings,
-                    primary, secondary, !HasItem(held) && CanTransfer(game, navigator.SelectedSlot, target), HasItem(held),
+                    primary, secondary, !HasItem(held) && CanOfferTransfer(game, navigator.SelectedSlot, target), HasItem(held),
                     renderer != null ? renderer.HeldItemBounds : null,
                     EmblemForgeContext.ModeActive(game) && !HasItem(held) ? "Cancel forging" : null,
                     HeldBadgeProvider, StorageOpen(game));
@@ -485,12 +500,14 @@ namespace ControllerSupport
             if (!storage && (index < 6 || index > 50)) return null;
             return items != null && native >= 0 && native < items.Length ? items[native] : null;
         }
-        private static bool CanTransfer(GameScript game, int index, Item item)
+        // Offer the transfer action based on context, without probing native
+        // crafting rules: CanPlaceCraft also creates rejection text objects.
+        private static bool CanOfferTransfer(GameScript game, int index, Item item)
         {
             if (!HasItem(item)) return false;
             if (index >= 51 && index <= 86) return StorageOpen(game);
             return SupportedItemContext(game) && index >= 6 && index <= 50 && NativeSlot(index) < 45 &&
-                (StorageOpen(game) || (game.menuCraft && game.menuCraft.activeInHierarchy && game.CanPlaceCraft(item.id)));
+                (StorageOpen(game) || (game.menuCraft && game.menuCraft.activeInHierarchy));
         }
         private static bool SupportedItemContext(GameScript game)
         {

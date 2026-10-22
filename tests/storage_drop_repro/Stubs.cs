@@ -54,6 +54,11 @@ namespace UnityEngine
         public Bounds bounds;
         public Collider(GameObject gameObject) { this.gameObject = gameObject; gameObject.collider = this; }
     }
+    public class BoxCollider : Collider
+    {
+        public Vector3 size, center;
+        public BoxCollider(GameObject gameObject) : base(gameObject) { }
+    }
     public class Renderer : Object
     {
         public Bounds bounds;

@@ -120,7 +120,24 @@ public class GameScript : UnityEngine.Object
     public int GetCredits() { return Credits; }
     public int GetStorageUpgradeCost(int level) { return UpgradeCost; }
     public bool CraftAllowed = true;
-    public bool CanPlaceCraft(int id) { return CraftAllowed; }
+    public Item[] CraftItems;
+    public int CraftEligibilityCalls, NativeSameTierErrors;
+    public bool CanPlaceCraft(int id)
+    {
+        CraftEligibilityCalls++;
+        // Native GameScript.CanPlaceCraft validates by emitting Error(4/5).
+        // It is an action validator, not a side-effect-free UI query.
+        if (CraftItems != null)
+        {
+            for (int i=0;i<3;i++)
+            {
+                if (CraftItems[i].id == id) return false;
+                if (CraftItems[i].id > 0 && CraftItems[i].id % 10 != id % 10)
+                { NativeSameTierErrors++; ControllerSupport.ControllerMenuSelection.NativeError(this,5); return false; }
+            }
+        }
+        return CraftAllowed;
+    }
     public int TransferInventoryCalls, TransferStorageCalls, TransferCraftCalls, SwapCalls, SwapStorageCalls;
     public int LastNativeSlot = -1, CoroutineSteps;
     public Item CraftReceived;
@@ -152,8 +169,9 @@ public class GameScript : UnityEngine.Object
     public IEnumerator ShiftClick2(int slot)
     {
         TransferCraftCalls++; LastNativeSlot = slot;
-        if (CanPlaceCraft(inventory[slot].id))
-        { CraftReceived=inventory[slot]; inventory[slot]=new Item(); }
+        // Native Update validates before invoking ShiftClick2; the coroutine
+        // and GadgetCore replacement do not repeat CanPlaceCraft themselves.
+        CraftReceived=inventory[slot]; inventory[slot]=new Item();
         yield return null;
     }
     public void SwapItem(int slot)

@@ -32,9 +32,23 @@ namespace UnityEngine
     {
         public GameObject gameObject;
         public bool enabled = true;
-        public Bounds bounds;
+        public virtual Bounds bounds { get; set; }
         public Collider(GameObject gameObject)
         { this.gameObject = gameObject; gameObject.collider = this; }
+    }
+    public class BoxCollider : Collider
+    {
+        public Vector3 size, center, position;
+        public Vector3 scale = new Vector3(8f, 8f, 1f);
+        public BoxCollider(GameObject gameObject) : base(gameObject) { }
+        public override Bounds bounds
+        {
+            get { return new Bounds {
+                center = new Vector3(position.x + center.x * scale.x,
+                    position.y + center.y * scale.y, position.z + center.z * scale.z),
+                size = new Vector3(size.x * scale.x, size.y * scale.y, size.z * scale.z) }; }
+            set { throw new InvalidOperationException("Set local size/center on boxes"); }
+        }
     }
     public struct Bounds { public Vector3 center, size; }
     public struct Vector3

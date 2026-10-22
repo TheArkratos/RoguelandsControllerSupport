@@ -367,8 +367,77 @@ internal static class Program
         AssertSelected("Data destructive controls remain excluded",back);
         ControllerFrontEndMenus.Reset();
     }
+    private static BoxCollider AddBox(GameObject root, string name, float x, float y,
+        float width = 1.4f, float height = .2f)
+    {
+        var button = new GameObject(name); root.AddChild(button);
+        return new BoxCollider(button) { size = new Vector3(width, height, 1f),
+            position = new Vector3(x, y, 1f) };
+    }
+    private static bool Same(Vector3 a, Vector3 b)
+    { return Math.Abs(a.x-b.x)<.0001f && Math.Abs(a.y-b.y)<.0001f && Math.Abs(a.z-b.z)<.0001f; }
+
+    private static void CharacterHitboxes()
+    {
+        Physics.Hit=null; Input.Left=Input.Right=false;
+        var root=new GameObject("characters");
+        var boxes=new BoxCollider[6];
+        for(int i=0;i<6;i++) boxes[i]=AddBox(root,"bs"+i,(i%2)*14,30-(i/2)*8,
+            i==5?1.7f:1.4f,i==5?.3f:.2f);
+        var last=boxes[5]; var original=last.size; var center=last.center;
+        var pad=ConnectedState();var title=new Menuu{menuCharSelect=root};
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,boxes[0].size),"character bs5 native local hitbox matches peer");
+        Assert(Same(last.bounds.size,boxes[0].bounds.size),"character bs5 scaled bounds match peer");
+        Assert(Same(last.center,center),"character normalization preserves local center");
+        for(int i=0;i<5;i++) Assert(Same(boxes[i].size,new Vector3(1.4f,.2f,1)),"character peer "+i+" is unchanged");
+        Check("resized character left neighbor Right -> bs5",boxes[4],1,last);
+        Physics.Hit=last;ControllerFrontEndMenus.Begin(title);Button(pad,0);ControllerFrontEndMenus.Begin(title);
+        Assert(ControllerFrontEndMenus.MouseButtonDown(0),"resized character uses native click adapter");
+        ControllerFrontEndMenus.End();
+        for(int i=0;i<3;i++) ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,boxes[0].size),"repeated character Begin is idempotent");
+        root.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,original),"leaving character menu restores original collider");
+        root.activeInHierarchy=true;ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,boxes[0].size),"character reentry normalizes again");
+        ControllerFrontEndMenus.Reset();Assert(Same(last.size,original),"Reset restores original collider");
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);
+        Assert(Same(last.size,original),"reconfigure restores original collider");
+        ControllerFrontEndMenus.Begin(title);
+        var options=new GameObject("options");var option=AddBox(options,"bs5",0,0,1.7f,.3f);
+        title.menuOptions=options;root.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,original),"root switch restores character collider");
+        Assert(Same(option.size,original),"same named box outside character menu is untouched");
+        ControllerFrontEndMenus.Reset();
+        root=new GameObject("characters");var plain=Add(root,"bs5",0,0);AddBox(root,"bs0",0,10);
+        var bounds=plain.bounds;title=new Menuu{menuCharSelect=root};
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        Assert(Same(plain.bounds.size,bounds.size),"non-box character collider is untouched");
+        ControllerFrontEndMenus.Reset();
+        root=new GameObject("characters");last=AddBox(root,"bs5",0,0,1.7f,.3f);
+        title=new Menuu{menuCharSelect=root};ControllerFrontEndMenus.Configure(()=>pad,Config(),null);
+        ControllerFrontEndMenus.Begin(title);Assert(Same(last.size,original),"missing peer leaves box untouched");
+        var bad=AddBox(root,"bs0",0,10,0,.2f);var peer=AddBox(root,"bs1",14,10,1.4f,.2f);
+        last.size=new Vector3(1.7f,.3f,2f);last.center=new Vector3(.1f,.2f,.3f);
+        ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,new Vector3(peer.size.x,peer.size.y,2f)),"valid peer fallback preserves target depth");
+        Assert(Same(last.center,new Vector3(.1f,.2f,.3f)),"nonzero center is preserved");
+        ControllerFrontEndMenus.Reset();
+        var restored=last.size;peer.enabled=false;
+        ControllerFrontEndMenus.Configure(()=>new JoystickInputState(),Config(),null);
+        ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,restored),"disabled peer is ignored");
+        peer.enabled=true;peer.gameObject.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,restored),"inactive peer is ignored");
+        peer.gameObject.activeInHierarchy=true;ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size,new Vector3(1.4f,.2f,2f)),"mouse-only disconnected controller still normalizes real hitbox");
+        ControllerFrontEndMenus.Reset();Physics.Hit=null;
+    }
     private static int Main()
     {
+        CharacterHitboxes();
         FrontEndDPadCoverage();CharacterEntryAndHandoff();NativeClicksAndExclusions();
         DPadAndInitialCharacterRed();
         Title();

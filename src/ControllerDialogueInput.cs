@@ -57,15 +57,16 @@ namespace ControllerSupport
             scene = Application.loadedLevel; initialized = true; previouslyAllowed = allowed;
 
             // Include timed system/tutorial popups: EnterTalking2 opens this
-            // same native menu without setting GameScript.talking.
+            // same native menu without setting GameScript.talking. Consume only
+            // Interact; a visible dialogue panel must not freeze gameplay.
             if (active)
             {
-                ControllerGameplayInput.ConsumeInventoryInput();
+                ControllerGameplayInput.ConsumeActionForFrame("Interact");
                 awaitingRelease = held;
             }
             else if (awaitingRelease)
             {
-                ControllerGameplayInput.ConsumeInventoryInput();
+                ControllerGameplayInput.ConsumeActionForFrame("Interact");
                 awaitingRelease = held;
             }
 
@@ -82,7 +83,8 @@ namespace ControllerSupport
             // Do not reveal here and then advance again in native Update.
             if (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) ||
                 bindings.Pressed("Inventory", state) || bindings.Pressed("Pause", state) ||
-                Input.GetButtonDown("Inventory") || Input.GetButtonDown("Cancel")) return;
+                (Input.GetButtonDown("Inventory") && !ControllerGameplayInput.PhysicalButtonConsumed(7)) ||
+                (Input.GetButtonDown("Cancel") && !ControllerGameplayInput.PhysicalButtonConsumed(1))) return;
             if (MenuTalking.isWriting) popup.SendMessage("Click");
             else game.Talk((int)CurA.GetValue(game), (int)CurB.GetValue(game), (int)CurC.GetValue(game));
         }

@@ -59,12 +59,15 @@ namespace ControllerSupport
             owner = game; player = MenuScript.player; scene = Application.loadedLevel;
             initialized = true; previouslyAllowed = allowed; previousCombat = GameScript.combatMode;
             if (bindings == null) return;
-            bool switching = bindings.Pressed("CombatMode", state) || bindings.Pressed("Inventory", state) ||
-                bindings.Pressed("Pause", state) || Input.GetButtonDown("CombatMode") || Input.GetButtonDown("Inventory");
+            bool switching = (!ControllerGameplayInput.IsActionConsumed("CombatMode") && bindings.Pressed("CombatMode", state)) ||
+                (!ControllerGameplayInput.IsActionConsumed("Inventory") && bindings.Pressed("Inventory", state)) ||
+                (!ControllerGameplayInput.IsActionConsumed("Pause") && bindings.Pressed("Pause", state)) ||
+                (Input.GetButtonDown("CombatMode") && !ControllerGameplayInput.PhysicalButtonConsumed(3)) ||
+                (Input.GetButtonDown("Inventory") && !ControllerGameplayInput.PhysicalButtonConsumed(7));
             for (int i = 0; i < Actions.Length; i++)
             {
                 bool held = bindings.Held(Actions[i], state);
-                if (!allowed || changed || switching)
+                if (!allowed || changed || switching || ControllerGameplayInput.IsActionConsumed(Actions[i]))
                 {
                     armed[i] = !held;
                     continue;
@@ -83,7 +86,7 @@ namespace ControllerSupport
         internal static bool HotkeyPressed(int slot)
         {
             if (slot < 0 || slot >= queued.Length || frame != Time.frameCount ||
-                !queued[slot] || player != MenuScript.player || scene != Application.loadedLevel ||
+                !queued[slot] || ControllerGameplayInput.IsActionConsumed(Actions[slot + 1]) || player != MenuScript.player || scene != Application.loadedLevel ||
                 previousCombat != GameScript.combatMode || !Available(owner)) return false;
             queued[slot] = false;
             return true;
@@ -92,7 +95,7 @@ namespace ControllerSupport
         private static bool Available(GameScript game)
         {
             if (game == null || blockedFrame == Time.frameCount || GameScript.inventoryOpen ||
-                GameScript.pausing || GameScript.dead || GameScript.buildMode || GameScript.talking ||
+                GameScript.pausing || GameScript.dead || GameScript.buildMode ||
                 PlayerScript.beaming || !MenuScript.player || GadgetCoreAPI.IsInputFrozen()) return false;
             NetworkView view = MenuScript.player.GetComponent<NetworkView>();
             return view && view.isMine;
