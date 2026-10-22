@@ -18,6 +18,20 @@ class Program {
   var patched=PortalGadgetCoreInputPatch.Transpiler(il).ToList();Check(!Equals(patched[0].operand,mouse)&&!Equals(patched[2].operand,click),"verified reads adapted");Check(patched[0].labels.Count==1&&Equals(il[0].operand,mouse),"labels preserved and originals not mutated");
   var g=new GameScript();var p=Target(g,"0",16,"planet");g.planetGuard[0]=p.gameObject;g.Uses(0,-1);var tele=Target(g,"bPlanetTele");Target(g,"bChallenge");Target(g,"bPlanetPageBack");Target(g,"bPlanetPageForward");
   var slots=new Collider[130];PortalMenuContext.CollectTargets(g,slots);Check(slots[100]==p&&slots[126]==tele&&slots[127]!=null&&slots[128]==null,"collect eligible roots only");
+  // Native level1 controls are direct children on layer zero: bChallenge GO636
+  // and bPlanetTele GO688 both have their own enabled renderer and collider.
+  // Focus remains useful when their native action cannot currently run.
+  g.credits=0;GameScript.curPlanetTrue=0;
+  PortalMenuContext.CollectTargets(g,slots);
+  Check(slots[126]==tele&&slots[127]!=null,"Native visible challenge and Set portal remain focusable with no credits and current portal selected");
+  Check(!Can(g,126)&&!Can(g,127),"Focusable unavailable controls still reject activation");
+  PortalMenuContext.PrepareClick(g,126,tele);Check(PortalMenuContext.NativeClickAllowed(g),"Unavailable portal cannot queue loader action");
+  GameScript.challengeLevel=3;PortalMenuContext.CollectTargets(g,slots);Check(slots[127]!=null&&!Can(g,127),"Maximum challenge remains focusable but not actionable");
+  GameScript.challengeLevel=0;g.credits=50000;GameScript.curPlanetTrue=-1;
+  tele.GetComponent<Renderer>().enabled=false;PortalMenuContext.CollectTargets(g,slots);Check(slots[126]==null,"Hidden Set portal excluded even though controls may be unavailable");tele.GetComponent<Renderer>().enabled=true;
+  var challenge=g.menuPlanets.children.First(o=>o.name=="bChallenge");challenge.activeInHierarchy=false;PortalMenuContext.CollectTargets(g,slots);Check(slots[127]==null,"Inactive challenge control excluded");challenge.activeInHierarchy=true;
+  tele.transform.parent=new GameObject("foreignPane").transform;PortalMenuContext.CollectTargets(g,slots);Check(slots[126]==null,"Foreign-parent Set portal excluded");tele.transform.parent=g.menuPlanets.transform;
+  g.menuPlanets.activeInHierarchy=false;PortalMenuContext.CollectTargets(g,slots);Check(slots[126]==null&&slots[127]==null,"Closed selector clears both control targets");g.menuPlanets.activeInHierarchy=true;
   g.Uses(0,0);Check(!Can(g,100)&&!Can(g,126),"zero uses rejects choosing and teleport");g.Uses(0,2);p.GetComponent<ButtonMenu>().isPlanet=true;Check(!Can(g,100),"native lock state rejects");p.GetComponent<ButtonMenu>().isPlanet=false;
   GameScript.curPlanetTrue=0;Check(!Can(g,126),"same destination rejects");GameScript.curPlanetTrue=-1;g.Cooling(true);Check(!Can(g,126),"cooldown rejects");g.Cooling(false);Check(Can(g,126),"destination available");
   g.credits=4999;Check(!Can(g,127),"cost rejection");g.credits=5000;Check(Can(g,127),"exact credits accepted");GameScript.challengeLevel=3;Check(!Can(g,127),"max level rejects");GameScript.challengeLevel=0;

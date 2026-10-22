@@ -40,7 +40,12 @@ namespace ControllerSupport
                 if (!ValidTarget(game, candidate)) continue;
                 int index = SlotFor(candidate);
                 string reason;
-                if (index >= FirstSlot && CanActivate(game, index, out reason)) absoluteSlots[index] = candidate;
+                // Native controls stay visible when their action is unavailable
+                // (already selected portal, insufficient Credits, max challenge).
+                // Keep them focusable so activation can explain the rejection.
+                // Planet locks/uses and loader page availability still gate cells.
+                if (index >= FirstSlot && (index == 126 || index == 127 ||
+                    CanActivate(game, index, out reason))) absoluteSlots[index] = candidate;
             }
         }
 

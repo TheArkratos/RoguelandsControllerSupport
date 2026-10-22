@@ -33,6 +33,7 @@ namespace ControllerSupport
         private static bool syntheticClick;
         private static bool failed;
         private static int heldDirection;
+        private static bool navigationRequiresRelease;
         private static float nextRepeatAt;
         private static bool activeNativeUpdate;
 
@@ -64,6 +65,7 @@ namespace ControllerSupport
             syntheticClick = false;
             failed = false;
             heldDirection = 0;
+            navigationRequiresRelease = false;
             nextRepeatAt = 0f;
             activeNativeUpdate = false;
         }
@@ -119,16 +121,24 @@ namespace ControllerSupport
 
         internal static void Begin(MenuScript menu)
         {
-            // The server-list/connect page is intentionally not in this slice.
-            if (menu == null || MenuScript.inGame || Active(menu.menuServer))
+            if (menu == null || MenuScript.inGame)
             {
                 activeNativeUpdate = false;
                 if (owner == menu) Clear();
                 return;
             }
+            if (Active(menu.menuServer))
+            {
+                // Reuse native server/connect clicks. Removing saved entries
+                // stays mouse-only; IP/port text still uses the native keyboard.
+                BeginMenu(menu, menu.menuServer,
+                    new[] { "bServer0", "bServer1", "bServer2", "bServer3",
+                        "enterIP", "enterPort", "bAddServer", "bBackMulti" }, false);
+                return;
+            }
             BeginMenu(menu, Active(menu.menu) ? menu.menu : null,
-                new[] { "bSingleplayer", "bMultiplayer", "bHost",
-                    "bBack", "bBackMulti", "bQuit", "bQuit2" }, false);
+                new[] { "bSingleplayer", "bMultiplayer", "bHost", "bConnect",
+                    "bName", "hostPort", "bBack", "bBackMulti", "bQuit", "bQuit2" }, false);
         }
 
         internal static void Begin(GameScript game)
@@ -165,6 +175,18 @@ namespace ControllerSupport
                     heldDirection = 0;
                 }
                 if (!Contains(selected)) selected = choices.Count > 0 ? choices[0] : null;
+                Menuu title = nextOwner as Menuu;
+                bool characterEntry = changed && title != null && root == title.menuCharSelect;
+                if (characterEntry)
+                {
+                    // Native character slots are row-major: bs0/bs1 on top.
+                    // Prefer bs0 on every entry, independently of scene child order.
+                    for (int slot = 0; slot < 6; slot++)
+                    {
+                        Collider first = choices.Find(c => c.gameObject.name == "bs" + slot);
+                        if (first != null) { selected = first; break; }
+                    }
+                }
 
                 Vector3 mouse = Input.mousePosition;
                 bool physicalClick = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1);
@@ -175,7 +197,7 @@ namespace ControllerSupport
                 if (changed || mouseMoved || physicalClick)
                 {
                     Collider hovered = UnderPhysicalMouse(mouse);
-                    if (hovered != null) selected = hovered;
+                    if (hovered != null && (!characterEntry || mouseMoved || physicalClick)) selected = hovered;
                     if (mouseMoved || physicalClick)
                     {
                         controllerOwns = false;
@@ -187,8 +209,11 @@ namespace ControllerSupport
                 bool connected = state != null && state.Connected;
                 bool held = connected && BoundHeld(state, "MenuActivate");
                 if (!held) activateArmed = true;
-                int direction = connected && !mouseMoved && !physicalClick
-                    ? Direction(state) : 0;
+                int rawDirection = connected ? Direction(state) : 0;
+                if (changed) navigationRequiresRelease = rawDirection != 0;
+                if (rawDirection == 0) navigationRequiresRelease = false;
+                int direction = connected && !mouseMoved && !physicalClick && !navigationRequiresRelease
+                    ? rawDirection : 0;
                 if (direction == 0) heldDirection = 0;
                 else if (direction != heldDirection)
                 {
@@ -205,7 +230,7 @@ namespace ControllerSupport
                 }
 
                 syntheticClick = false;
-                if (!changed && !physicalClick && connected && activateArmed &&
+                if (!changed && !mouseMoved && !physicalClick && connected && activateArmed &&
                     BoundPressed(state, "MenuActivate") && Contains(selected))
                 {
                     // Validate the virtual ray before allowing a native click.
@@ -303,6 +328,13 @@ namespace ControllerSupport
 
         private static int Direction(JoystickInputState state)
         {
+            // The raw pad snapshot already latches the first D-pad direction
+            // through rolling diagonals until neutral. Feed that same direction
+            // into the shared repeat/neighbor path, never an activation click.
+            if (state.DPadHeld("DPadUp")) return -2;
+            if (state.DPadHeld("DPadRight")) return 1;
+            if (state.DPadHeld("DPadDown")) return 2;
+            if (state.DPadHeld("DPadLeft")) return -1;
             // Front-end menus do not move the player. Either stick can steer
             // their shared selection; right wins if both are outside deadzone.
             // Resolve to one direction before repeat handling so two sticks
@@ -459,6 +491,7 @@ namespace ControllerSupport
             syntheticClick = false;
             activateArmed = false;
             heldDirection = 0;
+            navigationRequiresRelease = false;
             if (corners != null) corners.Hide();
         }
     }

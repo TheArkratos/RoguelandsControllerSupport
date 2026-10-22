@@ -258,8 +258,119 @@ internal static class Program
         }
     }
 
+    private static void DPadAndInitialCharacterRed()
+    {
+        var root=new GameObject("menuMain");var play=Add(root,"bPlay",0,2);var data=Add(root,"bData",0,1);
+        var title=new Menuu{menuMain=root};var pad=ConnectedState();
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        Axis(pad,7,1);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("D-pad Down navigates native title menu",data);
+        ControllerFrontEndMenus.Reset();
+        root=new GameObject("menuCharSelect");Add(root,"bBack",1,0);var old=Add(root,"bs4",0,1);var first=Add(root,"bs0",0,3);
+        var characters=new Menuu{menuCharSelect=root};pad=ConnectedState();
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(characters);
+        AssertSelected("Character entry defaults top-left bs0 despite collider collection order",first);
+        ControllerFrontEndMenus.Reset();
+    }
+    private static void FrontEndDPadCoverage()
+    {
+        foreach(string context in new[]{"main","options","character","create","choices","lobby","server"})
+        {
+            ControllerFrontEndMenus.Reset(); Physics.Hit=null; Input.Left=Input.Right=false; Input.mousePosition=new Vector3();
+            Time.unscaledTime=100; var pad=ConnectedState();var root=new GameObject("menu");
+            string[] names=context=="main" ? new[]{"bPlay","bData","bQuit"} :
+                context=="options" ? new[]{"bHigherM","bLowerM","bBack"} :
+                context=="character" ? new[]{"bs0","bs2","bs4"} :
+                context=="create" ? new[]{"bRace","bVariant","bCreate"} :
+                context=="choices" ? new[]{"0","1","2"} :
+                context=="lobby" ? new[]{"bHost","bConnect","hostPort"} : new[]{"enterIP","enterPort","bBackMulti"};
+            var top=Add(root,names[0],0,3);var middle=Add(root,names[1],0,2);var bottom=Add(root,names[2],0,1);
+            if(context=="choices") foreach(var c in new[]{top,middle,bottom}) c.gameObject.layer=22;
+            Action begin;
+            if(context=="lobby"||context=="server")
+            {
+                var ship=new MenuScript();if(context=="lobby")ship.menu=root;else ship.menuServer=root;
+                begin=()=>ControllerFrontEndMenus.Begin(ship);
+            }
+            else
+            {
+                var title=new Menuu();if(context=="main")title.menuMain=root;if(context=="options")title.menuOptions=root;
+                if(context=="character")title.menuCharSelect=root;if(context=="create")title.menuCreateCharacter=root;if(context=="choices")title.menuStuffSelect=root;
+                begin=()=>ControllerFrontEndMenus.Begin(title);
+            }
+            ControllerFrontEndMenus.Configure(()=>pad,Config(),null);begin();Axis(pad,7,1);begin();
+            AssertSelected(context+" D-pad Down first step",middle);
+            Assert(!ControllerFrontEndMenus.MouseButtonDown(0),context+" navigation never activates native click");
+            Time.unscaledTime+=.15f;begin();AssertSelected(context+" repeat waits initial delay",middle);
+            Time.unscaledTime+=.16f;begin();AssertSelected(context+" held direction repeats",bottom);
+            Axis(pad,7,0);begin();Axis(pad,7,-1);begin();AssertSelected(context+" release and Up reverses direction",middle);
+            Axis(pad,7,0);begin();Axis(pad,6,1);Axis(pad,7,1);begin();
+            AssertSelected(context+" simultaneous diagonal does not move",middle);
+            Axis(pad,6,0);Axis(pad,7,0);begin();Axis(pad,7,-1);begin();
+            AssertSelected(context+" direction resumes after neutral",top);
+            Axis(pad,6,1);Time.unscaledTime+=.31f;begin();
+            AssertSelected(context+" rolling diagonal retains first Up",top);
+        }
+        ControllerFrontEndMenus.Reset();
+    }
+    private static void CharacterEntryAndHandoff()
+    {
+        Physics.Hit=null;Input.Left=Input.Right=false;var pad=ConnectedState();
+        var chars=new GameObject("characters");var back=Add(chars,"bBack",1,0);var bottom=Add(chars,"bs4",0,1);
+        var second=Add(chars,"bs1",2,3);var first=Add(chars,"bs0",0,3);var title=new Menuu{menuCharSelect=chars};
+        Physics.Hit=bottom;ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("character opening ignores stationary bottom-slot mouse hover",first);
+        Input.mousePosition=new Vector3(Input.mousePosition.x+3,0,0);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("actual mouse movement takes character selection back",bottom);
+        chars.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);chars.activeInHierarchy=true;
+        ControllerFrontEndMenus.Begin(title);AssertSelected("character reentry resets previous selection to bs0",first);
+        chars.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);first.enabled=false;chars.activeInHierarchy=true;
+        ControllerFrontEndMenus.Begin(title);AssertSelected("disabled bs0 falls back to first visible top-row character",second);
+        chars.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);second.gameObject.activeInHierarchy=false;
+        chars.activeInHierarchy=true;ControllerFrontEndMenus.Begin(title);AssertSelected("hidden top-row falls back to next native character slot",bottom);
+        chars.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);bottom.enabled=false;chars.activeInHierarchy=true;
+        ControllerFrontEndMenus.Begin(title);AssertSelected("no characters falls back to safe existing choice",back);
+        ControllerFrontEndMenus.Reset();
+        first.enabled=bottom.enabled=true;second.gameObject.activeInHierarchy=true;Physics.Hit=bottom;
+        var middle=Add(chars,"bs2",0,2);
+        Axis(pad,7,1);ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("held D-pad through root entry cannot skip bs0",first);
+        Time.unscaledTime+=1;ControllerFrontEndMenus.Begin(title);AssertSelected("held D-pad stays blocked until neutral",first);
+        Axis(pad,7,0);ControllerFrontEndMenus.Begin(title);Axis(pad,7,1);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("fresh D-pad after root entry can navigate",middle);
+        ControllerFrontEndMenus.Reset();Axis(pad,7,0);Axis(pad,4,1);ControllerFrontEndMenus.Configure(()=>pad,Config(),null);
+        ControllerFrontEndMenus.Begin(title);AssertSelected("held stick through root entry cannot skip bs0",first);
+        Axis(pad,4,0);ControllerFrontEndMenus.Begin(title);Axis(pad,4,1);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("fresh stick after neutral navigates character entry",middle);
+        Physics.Hit=second;Input.Left=true;chars.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);chars.activeInHierarchy=true;
+        ControllerFrontEndMenus.Begin(title);AssertSelected("deliberate physical click can override character opening default",second);
+        Input.Left=false;Physics.Hit=null;ControllerFrontEndMenus.Reset();
+    }
+    private static void NativeClicksAndExclusions()
+    {
+        var root=new GameObject("servers");var entry=Add(root,"bServer0",0,3);var deletion=Add(root,"ipdel0",0,2);
+        var back=Add(root,"bBackMulti",0,1);var menu=new MenuScript{menuServer=root};var pad=ConnectedState();
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);Physics.Hit=entry;ControllerFrontEndMenus.Begin(menu);
+        ControllerFrontEndMenus.Begin(menu);Button(pad,0);ControllerFrontEndMenus.Begin(menu);
+        Assert(ControllerFrontEndMenus.MouseButtonDown(0),"Server entry uses native primary click adapter");
+        ControllerFrontEndMenus.End();pad.BeginFrame();ControllerFrontEndMenus.Begin(menu);
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0),"Held primary never repeats server connection");
+        Axis(pad,7,1);ControllerFrontEndMenus.Begin(menu);AssertSelected("Server delete button excluded from directional navigation",back);
+        Physics.Hit=deletion;Input.mousePosition=new Vector3(Input.mousePosition.x+3,0,0);ControllerFrontEndMenus.Begin(menu);
+        AssertSelected("Mouse hovering excluded delete cannot grant controller selection",back);
+        ControllerFrontEndMenus.Reset();Input.Left=false;Physics.Hit=null;
+        root=new GameObject("delete");Add(root,"delYes",0,2);var no=Add(root,"delNo",0,1);var title=new Menuu{menuDeleteChar=root};
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("Character deletion still exposes only safe No",no);
+        ControllerFrontEndMenus.Reset();root=new GameObject("data");Add(root,"bResetShip",0,2);back=Add(root,"bBack",0,1);title=new Menuu{menuData=root};
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("Data destructive controls remain excluded",back);
+        ControllerFrontEndMenus.Reset();
+    }
     private static int Main()
     {
+        FrontEndDPadCoverage();CharacterEntryAndHandoff();NativeClicksAndExclusions();
+        DPadAndInitialCharacterRed();
         Title();
         Characters();
         BothSticks();

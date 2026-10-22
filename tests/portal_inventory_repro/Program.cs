@@ -49,7 +49,7 @@ internal static class Program
         game.hoverItem=new GameObject("hoverItem") { activeInHierarchy=false }; tooltipContent=null;
         inventory=Add(game.inventoryMain,"6",0,0); edge=Add(game.inventoryMain,"11",10,0);
         hotkey=Add(game.inventoryBar,"0",0,-10);
-        var pane=new GameObject("planets"); planet=Add(pane,"0",20,0,22); travel=Add(pane,"bTele",20,-5,22);
+        var pane=new GameObject("planets"); planet=Add(pane,"0",20,0,22); travel=Add(pane,"bPlanetTele",20,-5,0);
         planet.gameObject.tag="planet";
         for(int i=0;i<45;i++) game.inventory[i]=new Item();
         GameScript.inventoryOpen=true; GameScript.pausing=GameScript.dead=GameScript.buildMode=false;
@@ -147,8 +147,39 @@ internal static class Program
         Check(nav.SelectedSlot==6,"Deliberate physical click takes priority on portal opening frame");
         Input.left=false;
     }
+    private static void NativePortalControlNavigation()
+    {
+        Setup();
+        // level1 menuPlanets611: position(7.75,-.125), scale16, rotation180X.
+        // Native controls636/688 are direct layer-zero children, not planet cells.
+        var pane=planet.transform.parent.gameObject;
+        planet.bounds=new Bounds{center=new Vector3(8,6.25f,1),size=new Vector3(1,1,1)};
+        travel.bounds=new Bounds{center=new Vector3(8.15f,-9.277f,1),size=new Vector3(6,2,1)};
+        var challenge=Add(pane,"bChallenge",8.0652f,-6.4418f,0);
+        PortalMenuContext.Targets[27]=challenge;
+        foreach(int number in new[]{4,8,16})
+        {
+            float y=number==4?4.5f:number==8?2.75f:-.7522f;
+            PortalMenuContext.Targets[number]=Add(pane,number.ToString(),8,y);
+        }
+        foreach(int expected in new[]{104,108,116,127,126})
+        {
+            Axis(4,0);Axis(4,1);
+            Check(Navigator.SelectedSlot==expected,"Native portal geometry Down reaches "+expected);
+        }
+        Axis(4,0);Axis(4,-1);
+        Check(Navigator.SelectedSlot==127,"Bottom Set portal Up returns to challenge control");
+        Axis(4,0);
+        Physics.Hit=challenge;
+        PortalMenuContext.Allowed=false;Button(0);
+        Check(!Left&&InventoryFeedback.LastReason=="Portal unavailable",
+            "Unavailable focused challenge explains rejection without native action");
+        Button(0,false);PortalMenuContext.Allowed=true;Button(0);
+        Check(Left&&PortalMenuContext.Prepared==127,"Challenge control uses existing primary route");
+    }
     private static void Main()
     {
+        NativePortalControlNavigation();
         PortalOpeningSelection();
         TooltipTransitions();
         Setup(); Hover(edge); Physics.Hit=planet; Axis(3,1);

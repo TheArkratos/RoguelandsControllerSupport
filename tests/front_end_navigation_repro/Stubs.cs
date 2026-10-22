@@ -49,8 +49,9 @@ namespace UnityEngine
     public struct RaycastHit { public Collider collider; }
     public static class Physics
     {
+        public static Collider Hit;
         public static bool Raycast(Ray ray, out RaycastHit hit, float distance)
-        { hit = new RaycastHit(); return false; }
+        { hit = new RaycastHit { collider=Hit }; return Hit!=null; }
     }
     public class Camera : Object
     {
@@ -61,10 +62,10 @@ namespace UnityEngine
     public static class Input
     {
         public static Vector3 mousePosition { get; set; }
-        public static bool NativeCancel, EscapeDown;
+        public static bool NativeCancel, EscapeDown, Left, Right;
         public static bool GetButtonDown(string name) { return NativeCancel; }
         public static bool GetKeyDown(KeyCode key) { return EscapeDown; }
-        public static bool GetMouseButtonDown(int button) { return false; }
+        public static bool GetMouseButtonDown(int button) { return button==0?Left:Right; }
     }
     public enum KeyCode { Escape }
     public static class Time { public static float unscaledTime; }
