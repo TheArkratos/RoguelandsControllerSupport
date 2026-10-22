@@ -76,6 +76,26 @@ internal static class Program
         Check(InventoryItemLifecycle.TryReturn(g, out reason), "pickup cancellation succeeds");
         Check(g.inventory[3].q == 5 && g.inventory[3].extra == "metadata", "whole item metadata preserved");
 
+        // Harmony still runs postfixes when the earlier mutation guard skips
+        // the original and the later side-effecting out-state prefix.
+        g = Fresh(); g.curStoragePage = 2;
+        g.inventory[3] = new Item(10, 5) { extra = "guarded source" };
+        Action(g, "SelectItem", 3);
+        Item guardedHeld = g.holdingItem;
+        GadgetCoreAPI.ThrowSpawn = true; Network.FailDestroy = true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(g, out reason) && !Guard(g),
+            "quarantine skips native action and later source-capture prefix");
+        typeof(InventorySourcePatch).GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { g, 7, typeof(GameScript).GetMethod("SwapItemStorage"), null });
+        Check(ReferenceEquals(g.holdingItem, guardedHeld) && guardedHeld.id == 10 && guardedHeld.q == 5
+            && guardedHeld.extra == "guarded source" && g.inventory[3].id == 0 && !Guard(g),
+            "postfix with skipped capture preserves quarantined held stack and does not throw");
+        BindingFlags sourceFields = BindingFlags.Static | BindingFlags.NonPublic;
+        Check((int)typeof(InventoryItemLifecycle).GetField("sourceSlot", sourceFields).GetValue(null) == 3
+            && (int)typeof(InventoryItemLifecycle).GetField("sourcePage", sourceFields).GetValue(null) == 2
+            && !(bool)typeof(InventoryItemLifecycle).GetField("sourceStorage", sourceFields).GetValue(null),
+            "postfix with null state preserves exact original pickup provenance");
+
         g = Fresh(); g.inventory[3] = new Item(10, 5); Action(g, "SelectItem", 3);
         g.inventory[4] = new Item(10, 3); g.holdingItem.q = 2;
         Check(InventoryItemLifecycle.TryReturn(g, out reason) && g.inventory[3].q == 2 && g.inventory[4].q == 3,
@@ -143,7 +163,7 @@ internal static class Program
         Check(InventoryItemLifecycle.MutationsBlocked(g) && !Guard(g), "scene transition cannot silently release an uncertain held copy");
         var targets = ((IEnumerable<MethodBase>)typeof(InventoryMutationGuardPatch)
             .GetMethod("TargetMethods", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null)).Select(x => x.Name).ToList();
-        foreach (string name in new[] { "SelectItem", "SelectItemStorage", "SplitItem", "SwapItem", "PlaceItem", "PlaceOneItem", "CombineItem", "SelectItemCraft", "ForgeEmblem", "DropItem", "CloseAllMenus" })
+        foreach (string name in new[] { "SelectItem", "SelectItemStorage", "SplitItem", "SwapItem", "PlaceItem", "PlaceOneItem", "CombineItem", "SelectItemCraft", "ForgeEmblem", "TrashItem", "DropItem", "CloseAllMenus" })
             Check(targets.Contains(name), "native guard covers " + name);
 
         g = Fresh(); g.holdingItem = new Item(20, 8); InstallCapture(false);
@@ -267,6 +287,41 @@ internal static class Program
         Check(InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.LastPosition.x == 150
             && GadgetCoreAPI.LastPosition.y == 61.5f && GadgetCoreAPI.LastDrop.id == 80,
             "production forge opener postfix captures fallback position before interaction disappears");
+        g = Fresh();
+        PlayerScript.curInteractObj = new GameObject();
+        PlayerScript.curInteractObj.transform.position = new Vector3(180, 70, 0);
+        g.Trash();
+        typeof(InventoryTrashContextPatch).GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { g });
+        g.inventory[6] = new Item(10, 5); g.inventory[7] = new Item(11, 2) { extra = "trasher swap" };
+        Action(g, "SelectItem", 6); Action(g, "SwapItem", 7);
+        PlayerScript.curInteractObj = new GameObject();
+        PlayerScript.curInteractObj.transform.position = new Vector3(700, 900, 0);
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 1
+            && GadgetCoreAPI.LastPosition.x == 180 && GadgetCoreAPI.LastPosition.y == 71.5f,
+            "Trasher opener captures station location for unreturnable held-item exit");
+        Check(g.holdingItem.id == 0 && g.inventory[7].id == 10 && GadgetCoreAPI.LastDrop.id == 11
+            && GadgetCoreAPI.LastDrop.q == 2 && GadgetCoreAPI.LastDrop.extra == "trasher swap",
+            "Trasher range exit preserves completed swap and exact held-item metadata");
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 1,
+            "Repeated Trasher exit cannot duplicate fallback item");
+        g.menuTrasher.activeSelf = false; InventoryItemLifecycle.ObserveContext(g); g.holdingItem = new Item(12, 2);
+        Check(!InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 1,
+            "Closing Trasher invalidates its remembered position");
+
+        g = Fresh(); g.Trash();
+        typeof(InventoryTrashContextPatch).GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { g });
+        g.inventory[6] = new Item(21, 5); Action(g, "SelectItem", 6);
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && g.inventory[6].q == 5 && GadgetCoreAPI.Drops == 0,
+            "Trasher known source returns safely without dropping");
+        g.holdingItem = new Item(20, 8); GadgetCoreAPI.ThrowSpawn = true; Network.FailDestroy = true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(g, out reason) && InventoryItemLifecycle.MutationsBlocked(g),
+            "Uncertain drop quarantines inventory while Trasher is open");
+        Item beforeTrash = g.inventory[6];
+        if(Guard(g)) g.TrashItem(6);
+        Check(ReferenceEquals(g.inventory[6], beforeTrash) && g.inventory[6].id == 21 && g.inventory[6].q == 5,
+            "Production quarantine guard blocks native TrashItem without mutating the ingredient");
         Console.WriteLine("Inventory lifecycle: " + checks + " checks passed.");
     }
 }

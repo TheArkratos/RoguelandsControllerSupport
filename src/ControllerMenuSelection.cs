@@ -39,7 +39,7 @@ namespace ControllerSupport
         private static Vector3 lastPhysicalMouse;
         private static bool sampledPhysicalMouse, controllerOwnsSelection;
         private static GameObject auxiliaryPane;
-        private static bool portalContext, forgeModeContext;
+        private static bool portalContext, conversionModeContext;
         private static readonly FieldInfo NativeHoverField = Field("hoverItem");
         private static GameScript hoverGame;
         private static Collider hoverCollider;
@@ -95,10 +95,10 @@ namespace ControllerSupport
                 if (open) ControllerGameplayInput.ConsumeInventoryInput();
                 bool portal = PortalMenuContext.IsOpen(game);
                 GameObject pane = game != null && game.menuStorage && game.menuStorage.activeInHierarchy ? game.menuStorage : null;
-                if (pane == null && EmblemForgeContext.IsOpen(game)) pane = EmblemForgeContext.Root(game);
-                bool forgeMode = EmblemForgeContext.ModeActive(game);
-                bool newlyOpen = selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || forgeModeContext != forgeMode;
-                forgeModeContext = forgeMode;
+                if (pane == null && ItemConversionContext.IsOpen(game)) pane = ItemConversionContext.Root(game);
+                bool conversionMode = ItemConversionContext.ModeActive(game);
+                bool newlyOpen = selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || conversionModeContext != conversionMode;
+                conversionModeContext = conversionMode;
                 portalContext = portal; auxiliaryPane = pane;
                 selectionGame = open ? game : null;
                 Vector3 mouse = Input.mousePosition;
@@ -184,9 +184,9 @@ namespace ControllerSupport
                 {
                     controllerOwnsSelection = true;
                     bool hadItem = HasItem(InventoryItemLifecycle.Held(game));
-                    if (pressed[4] && !hadItem && EmblemForgeContext.ModeActive(game))
+                    if (pressed[4] && !hadItem && ItemConversionContext.ModeActive(game))
                     {
-                        EmblemForgeContext.CancelMode(game); repeating = false; repeatBlocked = true;
+                        ItemConversionContext.CancelMode(game); repeating = false; repeatBlocked = true;
                         InventoryItemLifecycle.PlaySound(game,"Au/confirm");
                         return;
                     }
@@ -209,24 +209,24 @@ namespace ControllerSupport
                 }
                 Collider candidate = navigator.SelectedCollider;
                 int index = navigator.SelectedSlot;
-                if (navigator.SelectedIsForgeToggle || EmblemForgeContext.ModeActive(game))
+                if (navigator.SelectedIsConversionToggle || ItemConversionContext.ModeActive(game))
                 {
                     repeating = false; repeatBlocked = true;
                     if (!pressed[0] && !pressed[1] && !pressed[2]) return;
                     if (!pressed[0] || pressed[1] || pressed[2])
-                    { Reject(game, "Use primary for forging; secondary and transfer are unavailable"); return; }
+                    { Reject(game, ItemConversionContext.SecondaryRejection(game)); return; }
                     bool inventoryTarget = index >= 6 && index <= 35;
-                    if (!navigator.SelectedIsForgeToggle && inventoryTarget && HasItem(InventoryItemLifecycle.Held(game)))
+                    if (!navigator.SelectedIsConversionToggle && inventoryTarget && HasItem(InventoryItemLifecycle.Held(game)))
                     {
-                        controllerOwnsSelection = true; EmblemForgeContext.CancelMode(game);
+                        controllerOwnsSelection = true; ItemConversionContext.CancelMode(game);
                         return;
                     }
                     string reason;
-                    if (!EmblemForgeContext.CanActivate(game,index,ReadTarget(game,index),out reason))
+                    if (!ItemConversionContext.CanActivate(game,index,ReadTarget(game,index),out reason))
                     { Reject(game,reason); return; }
                     if (!ValidateRay(candidate)) return;
                     // Native Update assigns slotID from this raycast before the
-                    // loader ForgeEmblem prefix reads it. Never call conversion directly.
+                    // loader conversion prefixes may read it. Never call conversion directly.
                     controllerOwnsSelection = true;
                     storageClick = true; virtualButton = 0; clickCollider = candidate;
                     return;
@@ -378,7 +378,7 @@ namespace ControllerSupport
                 }
                 if (renderer != null && !renderer.IsAlive)
                 { renderer.Dispose(); renderer = null; assetFailed = false; }
-                bool page = navigator.SelectedIsStoragePage || navigator.SelectedIsStorageUpgrade || navigator.SelectedIsPortal || navigator.SelectedIsForgeToggle;
+                bool page = navigator.SelectedIsStoragePage || navigator.SelectedIsStorageUpgrade || navigator.SelectedIsPortal || navigator.SelectedIsConversionToggle;
                 if (renderer != null && rendererIsPage != page)
                 { renderer.Dispose(); renderer = null; }
                 if (renderer == null && !assetFailed)
@@ -402,7 +402,7 @@ namespace ControllerSupport
                 InventoryFeedback.SetContext(game, selected, controllerOwnsSelection && !InventoryItemLifecycle.MutationsBlocked(game), bindings,
                     primary, secondary, !HasItem(held) && CanOfferTransfer(game, navigator.SelectedSlot, target), HasItem(held),
                     renderer != null ? renderer.HeldItemBounds : null,
-                    EmblemForgeContext.ModeActive(game) && !HasItem(held) ? "Cancel forging" : null,
+                    ItemConversionContext.ModeActive(game) && !HasItem(held) ? ItemConversionContext.CancelLabel(game) : null,
                     HeldBadgeProvider, StorageOpen(game));
             }
             catch (Exception error) { Disable(error); }
@@ -436,13 +436,13 @@ namespace ControllerSupport
         {
             primary = secondary = null;
             if (InventoryItemLifecycle.MutationsBlocked(game)) return;
-            if (slot == EmblemForgeContext.ToggleSlot || EmblemForgeContext.ModeActive(game))
+            if (slot == ItemConversionContext.ToggleSlot || ItemConversionContext.ModeActive(game))
             {
-                if (slot >= 6 && slot <= 35 && HasItem(held)) primary = "Cancel forging";
+                if (slot >= 6 && slot <= 35 && HasItem(held)) primary = ItemConversionContext.CancelLabel(game);
                 else
                 {
                     string reason;
-                    if (EmblemForgeContext.CanActivate(game,slot,target,out reason)) primary = EmblemForgeContext.ActionLabel(game,slot);
+                    if (ItemConversionContext.CanActivate(game,slot,target,out reason)) primary = ItemConversionContext.ActionLabel(game,slot);
                 }
                 return;
             }
@@ -642,7 +642,7 @@ namespace ControllerSupport
             stateProvider=null; usingControllerProvider=null; bindings=null; logWarning=null;
             preparedGame=selectionGame=null; preparedFrame=-1; Array.Clear(armed,0,armed.Length);
             Array.Clear(pagingArmed,0,pagingArmed.Length); pagingPlayer=null; pagingScene=-1;
-            sampledPhysicalMouse=controllerOwnsSelection=false; auxiliaryPane=null; portalContext=forgeModeContext=false;
+            sampledPhysicalMouse=controllerOwnsSelection=false; auxiliaryPane=null; portalContext=conversionModeContext=false;
             hoverGame=null; hoverCollider=null; hoverControllerOwned=false;
             nativeHeldIconWidth=nativeHeldIconHeight=0f;
             repeatTarget=null; repeating=repeatBlocked=false; actionFrame=nativeErrorFrame=-1;

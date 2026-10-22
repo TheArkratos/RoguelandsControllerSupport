@@ -98,6 +98,9 @@ public class GameScript
     public UnityEngine.GameObject menuStorage = new UnityEngine.GameObject { activeSelf = true };
     public UnityEngine.GameObject menuPlanets = new UnityEngine.GameObject { activeSelf = false };
     public UnityEngine.GameObject menuEmblemForge = new UnityEngine.GameObject { activeSelf = false };
+    public UnityEngine.GameObject menuTrasher = new UnityEngine.GameObject { activeSelf = false };
+    public void Trash() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = false; menuTrasher.activeSelf = true; inventoryOpen = true; }
+    public void TrashItem(int slot) { inventory[slot] = new Item(52, inventory[slot].q * 2); }
     public void Planets() { menuStorage.activeSelf = false; menuPlanets.activeSelf = true; inventoryOpen = true; }
     public void EmblemForge() { menuStorage.activeSelf = menuPlanets.activeSelf = false; menuEmblemForge.activeSelf = true; inventoryOpen = true; }
     public void ForgeEmblem(int slot) { holdingItem = new Item(80 + slot, 1) { extra = "generated emblem" }; }

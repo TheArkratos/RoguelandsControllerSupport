@@ -18,7 +18,7 @@ namespace ControllerSupport
         private const int PageFirstSlot = StorageFirstSlot + StorageSlotCount;
         private const int PageSlotCount = 12;
         private const int UpgradeSlot = PageFirstSlot + PageSlotCount;
-        private const int SlotCount = EmblemForgeContext.ToggleSlot + 1;
+        private const int SlotCount = ItemConversionContext.ToggleSlot + 1;
         private const int GridFirstSlot = 6;
         private const int GridSlotCount = 30;
         private const int GridColumns = 6;
@@ -38,7 +38,7 @@ namespace ControllerSupport
         private GameObject hotkeyRoot;
         private GameObject storageRoot;
         private bool portalOpen;
-        private GameObject forgeRoot;
+        private GameObject conversionRoot;
         private GameScript owner;
         private Vector3 lastMousePosition;
         private bool sampledMouse;
@@ -56,7 +56,7 @@ namespace ControllerSupport
         { return page >= 0 && page < PageSlotCount && ValidSlot(PageFirstSlot + page); }
         internal bool SelectedIsStorageUpgrade { get { return SelectedSlot == UpgradeSlot; } }
         internal bool SelectedIsPortal { get { return SelectedSlot >= PortalMenuContext.FirstSlot && SelectedSlot < PortalMenuContext.FirstSlot + PortalMenuContext.TargetCount; } }
-        internal bool SelectedIsForgeToggle { get { return SelectedSlot == EmblemForgeContext.ToggleSlot; } }
+        internal bool SelectedIsConversionToggle { get { return SelectedSlot == ItemConversionContext.ToggleSlot; } }
         internal Collider SelectedCollider
         {
             get
@@ -82,14 +82,14 @@ namespace ControllerSupport
                 inventoryRoot != game.inventoryMain);
             if (owner != game || inventoryRoot != game.inventoryMain ||
                 hotkeyRoot != game.inventoryBar || storageRoot != activeStorage || portalOpen != nextPortalOpen ||
-                forgeRoot != (EmblemForgeContext.IsOpen(game) ? EmblemForgeContext.Root(game) : null))
+                conversionRoot != (ItemConversionContext.IsOpen(game) ? ItemConversionContext.Root(game) : null))
             {
                 owner = game;
                 inventoryRoot = game.inventoryMain;
                 hotkeyRoot = game.inventoryBar;
                 storageRoot = activeStorage;
                 portalOpen = nextPortalOpen;
-                forgeRoot = EmblemForgeContext.IsOpen(game) ? EmblemForgeContext.Root(game) : null;
+                conversionRoot = ItemConversionContext.IsOpen(game) ? ItemConversionContext.Root(game) : null;
                 RefreshSlots();
                 sampledMouse = false;
                 heldDirection = 0;
@@ -104,7 +104,7 @@ namespace ControllerSupport
                 SelectedSlot = portalDefault >= 0 ? portalDefault : hovered >= 0 ? hovered :
                     ValidSlot(GridFirstSlot) ? GridFirstSlot : FirstValidSlot();
             }
-            else if (storageRoot != null || portalOpen || forgeRoot)
+            else if (storageRoot != null || portalOpen || conversionRoot)
             {
                 // SixBySixChest may add its final row after this navigator has
                 // initialized. Page unlocks can also change while storage is open.
@@ -163,7 +163,7 @@ namespace ControllerSupport
             hotkeyRoot = null;
             storageRoot = null;
             portalOpen = false;
-            forgeRoot = null;
+            conversionRoot = null;
             Array.Clear(slots, 0, slots.Length);
             sampledMouse = false;
             heldDirection = 0;
@@ -202,7 +202,7 @@ namespace ControllerSupport
                 }
             }
             PortalMenuContext.CollectTargets(owner, slots);
-            slots[EmblemForgeContext.ToggleSlot] = EmblemForgeContext.CollectTarget(owner);
+            slots[ItemConversionContext.ToggleSlot] = ItemConversionContext.CollectTarget(owner);
             if (!storageRoot) return;
             Transform storage = storageRoot.transform;
             for (int i = 0; i < storage.childCount; i++)
@@ -283,7 +283,7 @@ namespace ControllerSupport
             Ray ray = camera.ScreenPointToRay(mouse);
             RaycastHit hit;
             // Page buttons can be on a different layer from inventory slots.
-            if ((storageRoot || portalOpen || forgeRoot) && Physics.Raycast(ray, out hit, 5f, ~0))
+            if ((storageRoot || portalOpen || conversionRoot) && Physics.Raycast(ray, out hit, 5f, ~0))
             {
                 int page = FindHitSlot(hit.collider, PageFirstSlot, SlotCount);
                 if (page >= 0) return page;

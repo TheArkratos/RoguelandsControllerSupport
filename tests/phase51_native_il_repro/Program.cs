@@ -42,15 +42,56 @@ internal static class Program
         object context=Activator.CreateInstance(metadataApi.GetType("System.Reflection.MetadataLoadContext",true),new object[]{resolver,"mscorlib"});
         Assembly inspected=(Assembly)context.GetType().GetMethod("LoadFromAssemblyPath").Invoke(context,new object[]{mod.Location});
         Type[] exported=inspected.GetExportedTypes();
-        foreach(string name in new[]{"AimAssistFactoryPatch","AimAssistIteratorPatch","AimAssistDirectPatch","AimAssistStaffSpawnPatch","AimAssistSkillPatch","AimAssistAtalantaPatch"})
+        foreach(string name in new[]{"AimAssistFactoryPatch","AimAssistIteratorPatch","AimAssistDirectPatch","AimAssistStaffSpawnPatch","AimAssistSkillPatch","AimAssistAtalantaPatch",
+            "InventoryDropCapturePatch","InventoryMutationGuardPatch","InventorySourcePatch",
+            "InventoryChestContextPatch","InventoryPortalContextPatch","InventoryHeldEmptyPatch",
+            "InventoryEmblemContextPatch","InventoryTrashContextPatch"})
         {
             Type patch=inspected.GetType("ControllerSupport."+name,true);
-            Check(exported.Contains(patch),"GadgetCore loader discovers exported aim-assist patch "+name);
+            Check(exported.Contains(patch),"GadgetCore loader discovers exported patch "+name);
             CustomAttributeData gadget=patch.GetCustomAttributesData().SingleOrDefault(a=>a.AttributeType.FullName=="GadgetCore.API.HarmonyGadgetAttribute");
             Check(gadget!=null&&gadget.ConstructorArguments.Count>=1&&(string)gadget.ConstructorArguments[0].Value=="Controller Support","Exported patch belongs to exact Controller Support gadget: "+name);
             Check(patch.GetCustomAttributesData().Any(a=>a.AttributeType.FullName=="HarmonyLib.HarmonyPatch"),"Exported patch retains Harmony patch declaration: "+name);
         }
+        foreach(Type patch in inspected.GetTypes())
+        {
+            CustomAttributeData gadget=patch.GetCustomAttributesData().SingleOrDefault(a=>a.AttributeType.FullName=="GadgetCore.API.HarmonyGadgetAttribute");
+            if(gadget==null || gadget.ConstructorArguments.Count<1 || (string)gadget.ConstructorArguments[0].Value!="Controller Support") continue;
+            Check(exported.Contains(patch),"Every Controller Support GadgetCore patch is exported: "+patch.FullName);
+        }
+        foreach (var declaration in new[] {
+            new[]{"InventoryDropCapturePatch","GadgetCore.API.GadgetCoreAPI","DropItem"},
+            new[]{"InventoryChestContextPatch","GameScript","Storage"},
+            new[]{"InventoryPortalContextPatch","GameScript","Planets"},
+            new[]{"InventoryHeldEmptyPatch","GameScript","RefreshHoldingSlot"},
+            new[]{"InventoryEmblemContextPatch","GameScript","EmblemForge"},
+            new[]{"InventoryTrashContextPatch","GameScript","Trash"}})
+        {
+            Type patch = inspected.GetType("ControllerSupport." + declaration[0], true);
+            CustomAttributeData target = patch.GetCustomAttributesData().Single(a=>a.AttributeType.FullName=="HarmonyLib.HarmonyPatch");
+            Check(target.ConstructorArguments.Count>=2 && ((Type)target.ConstructorArguments[0].Value).FullName==declaration[1]
+                && (string)target.ConstructorArguments[1].Value==declaration[2], "Actual lifecycle patch target declaration: "+declaration[0]);
+        }
         ((IDisposable)context).Dispose();
+        MethodBase[] mutationTargets = Targets("InventoryMutationGuardPatch");
+        Type inventoryGame = game.GetType("GameScript", true);
+        foreach (string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage","ForgeEmblem","TrashItem"})
+            Check(mutationTargets.Contains(inventoryGame.GetMethod(name,All,null,new[]{typeof(int)},null)), "Quarantine guards native mutation "+name+"(int)");
+        foreach (string name in new[]{"CloseAllMenus","DropItem"})
+            Check(mutationTargets.Contains(inventoryGame.GetMethod(name,All,null,Type.EmptyTypes,null)), "Quarantine guards native "+name+"()");
+        MethodInfo[] queued = inventoryGame.GetNestedTypes(All).Where(t=>t.Name.Contains("ShiftClick") && typeof(System.Collections.IEnumerator).IsAssignableFrom(t))
+            .Select(t=>t.GetMethod("MoveNext",All)).Where(m=>m!=null&&m.ReturnType==typeof(bool)).ToArray();
+        Check(queued.Length>0,"Real native ShiftClick iterators exist");
+        foreach(MethodInfo move in queued) Check(mutationTargets.Contains(move),"Quarantine guards previously queued "+move.DeclaringType.Name);
+        MethodInfo trash = inventoryGame.GetMethod("TrashItem",All,null,new[]{typeof(int)},null);
+        Check(trash.ReturnType==typeof(void),"Native TrashItem is synchronous void, not a queued conversion coroutine");
+        Check(!inventoryGame.GetNestedTypes(All).Any(t=>t.Name.StartsWith("<TrashItem>",StringComparison.Ordinal)),"Native TrashItem has no iterator requiring an additional queued guard");
+        Check(Read(trash).Count(i=>Call(i,"GameScript","GetItemWorth"))==1,"Trash conversion retains native worth calculation");
+        Check(Read(trash).Count(i=>Call(i,"GameScript","Trasher"))==1,"Trash conversion retains native mode re-entry");
+        MethodBase[] sourceTargets=Targets("InventorySourcePatch");
+        foreach(string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage"})
+            Check(sourceTargets.Contains(inventoryGame.GetMethod(name,All,null,new[]{typeof(int)},null)),"Exact source tracking targets "+name);
+        Check(sourceTargets.Length==6,"Exact source tracking remains limited to six native held-item actions");
         // Old Unity's logger is managed until its enabled sink reaches a native
         // ECall. Disable that sink so successful production IL audits can finish.
         Assembly unity=Assembly.LoadFrom(Path.Combine(managed,"UnityEngine.dll"));
@@ -108,8 +149,10 @@ internal static class Program
         Check(updatePatched.Count==updateNative.Count+1,"only Droid receiver argument changes native update length");
         Check(updateNative.Count(i=>Call(i,"GameScript","UseSkill"))==6&&updatePatched.Count(i=>Call(i,"GameScript","UseSkill"))==6,"six native chip actions retained");
         Check(updateNative.Count(i=>Call(i,"GameScript","UseItem"))==6&&updatePatched.Count(i=>Call(i,"GameScript","UseItem"))==6,"six native item actions retained");
-        Console.WriteLine("Phase 5.1 installed native IL: "+checks+" checks passed.");
+        Console.WriteLine("Controller Support installed native IL and patch discovery: "+checks+" checks passed.");
     }
+    private static MethodBase[] Targets(string patch)
+    { return ((IEnumerable<MethodBase>)mod.GetType("ControllerSupport."+patch,true).GetMethod("TargetMethods",All).Invoke(null,null)).ToArray(); }
     private static int Named(List<CodeInstruction> code,string name,string type,string method)
     { int count=0;for(int i=1;i<code.Count;i++)if(code[i-1].opcode==OpCodes.Ldstr&&Equals(code[i-1].operand,name)&&Call(code[i],type,method))count++;return count; }
     private static List<CodeInstruction> Read(MethodInfo method)

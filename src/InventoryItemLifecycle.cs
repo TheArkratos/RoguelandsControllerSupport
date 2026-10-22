@@ -16,6 +16,7 @@ namespace ControllerSupport
         private static readonly FieldInfo CombatChip = AccessToolsField("holdingCombatChip");
         private static readonly FieldInfo PortalMenu = AccessToolsField("menuPlanets");
         private static readonly FieldInfo EmblemForgeMenu = AccessToolsField("menuEmblemForge");
+        private static readonly FieldInfo TrasherMenu = AccessToolsField("menuTrasher");
         private static GameScript owner;
         private static int scene = -1;
         private static int sourceSlot = -1;
@@ -58,14 +59,16 @@ namespace ControllerSupport
             }
             GameObject portal = PortalMenu == null ? null : PortalMenu.GetValue(game) as GameObject;
             GameObject forge = EmblemForgeMenu == null ? null : EmblemForgeMenu.GetValue(game) as GameObject;
+            GameObject trasher = TrasherMenu == null ? null : TrasherMenu.GetValue(game) as GameObject;
             GameObject root = !GameScript.inventoryOpen ? null
                 : game.menuStorage != null && game.menuStorage.activeSelf ? game.menuStorage
                 : portal != null && portal.activeSelf ? portal
-                : forge != null && forge.activeSelf ? forge : null;
+                : forge != null && forge.activeSelf ? forge
+                : trasher != null && trasher.activeSelf ? trasher : null;
             if (!ReferenceEquals(root, interactionRoot))
             {
                 // A shared inventory pane may belong to a chest, portal console
-                // or Emblem Forge. Capture its opener once, never the new interaction
+                // or item conversion station. Capture its opener once, never the new interaction
                 // target encountered while walking out of the original range.
                 interactionRoot = root;
                 interactionCaptured = false;

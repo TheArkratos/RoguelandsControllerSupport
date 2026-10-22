@@ -106,7 +106,12 @@ public class GameScript : UnityEngine.Object
     public void SelectPage(int page) { if (page <= storageLevel) { currentStoragePage = page; PageCalls++; } }
     public static bool inventoryOpen = true, pausing, dead, buildMode;
     public UnityEngine.GameObject hoverItem, menuEmblemForge, cursorEmblemForge;
-    public bool emblemAgain;
+    public UnityEngine.GameObject menuTrasher;
+    public bool emblemAgain, trashAgain;
+    public int TrashCalls, WorthCalls;
+    public Func<int,int> ItemValue = id => 2;
+    public int GetItemWorth(int id) { WorthCalls++; return ItemValue(id); }
+    public void Trasher() { trashing=!trashing; ToggleCalls++; }
     public int ForgeCalls, ToggleCalls, slotID=-1;
     public void EmblemForging() { emblemForging=!emblemForging; ToggleCalls++; }
     public UnityEngine.GameObject inventoryMain, inventoryBar, menuStorage, holdingItemObj,

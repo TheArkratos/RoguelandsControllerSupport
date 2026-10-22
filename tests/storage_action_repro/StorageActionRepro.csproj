@@ -15,6 +15,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="Stubs.cs" />
       <Compile Include="../PortalMenuContextStub.cs" Link="PortalMenuContextStub.cs" />
-      <Compile Include="../EmblemForgeContextStub.cs" Link="EmblemForgeContextStub.cs" />
+      <Compile Include="../ItemConversionContextStub.cs" Link="ItemConversionContextStub.cs" />
   </ItemGroup>
 </Project>

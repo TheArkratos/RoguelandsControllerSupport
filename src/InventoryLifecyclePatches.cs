@@ -13,7 +13,7 @@ namespace ControllerSupport
     // only observes each real network object within our synchronous drop scope.
     [HarmonyPatch(typeof(GadgetCoreAPI), "DropItem", new[] { typeof(Vector3), typeof(Item), typeof(bool) })]
     [HarmonyGadget("Controller Support")]
-    internal static class InventoryDropCapturePatch
+    public static class InventoryDropCapturePatch
     {
         [HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
@@ -47,7 +47,7 @@ namespace ControllerSupport
     // controller routing. Native inventory behavior is unchanged outside it.
     [HarmonyPatch]
     [HarmonyGadget("Controller Support")]
-    internal static class InventoryMutationGuardPatch
+    public static class InventoryMutationGuardPatch
     {
         private static IEnumerable<MethodBase> TargetMethods()
         {
@@ -61,7 +61,8 @@ namespace ControllerSupport
                     || name.StartsWith("PlaceOneItem", StringComparison.Ordinal)
                     || name.StartsWith("CombineItem", StringComparison.Ordinal)
                     || name.StartsWith("ShiftClick", StringComparison.Ordinal)
-                    || name == "ForgeEmblem";
+                    || name == "ForgeEmblem"
+                    || name == "TrashItem";
                 ParameterInfo[] parameters = method.GetParameters();
                 if (mutation && parameters.Length == 1 && parameters[0].ParameterType == typeof(int))
                     yield return method;
@@ -92,7 +93,7 @@ namespace ControllerSupport
 
     [HarmonyPatch]
     [HarmonyGadget("Controller Support")]
-    internal static class InventorySourcePatch
+    public static class InventorySourcePatch
     {
         internal sealed class Capture
         {
@@ -120,6 +121,9 @@ namespace ControllerSupport
         [HarmonyPostfix, HarmonyPriority(Priority.Last - 100)]
         private static void Postfix(GameScript __instance, int __0, MethodBase __originalMethod, Capture __state)
         {
+            // An earlier quarantine prefix can skip both the action and our
+            // out-state prefix; Harmony still invokes this postfix afterward.
+            if (__state == null) return;
             Item held = InventoryItemLifecycle.Held(__instance);
             if (held == null || held.id == 0 || held.q <= 0) return;
             if (!ReferenceEquals(held, __state.Before) || held.q != __state.Quantity)
@@ -141,7 +145,7 @@ namespace ControllerSupport
 
     [HarmonyPatch(typeof(GameScript), "Storage")]
     [HarmonyGadget("Controller Support")]
-    internal static class InventoryChestContextPatch
+    public static class InventoryChestContextPatch
     {
         [HarmonyPostfix]
         private static void Postfix(GameScript __instance) { InventoryItemLifecycle.ObserveContext(__instance); }
@@ -149,7 +153,7 @@ namespace ControllerSupport
 
     [HarmonyPatch(typeof(GameScript), "Planets")]
     [HarmonyGadget("Controller Support")]
-    internal static class InventoryPortalContextPatch
+    public static class InventoryPortalContextPatch
     {
         [HarmonyPostfix]
         private static void Postfix(GameScript __instance) { InventoryItemLifecycle.ObserveContext(__instance); }
@@ -157,7 +161,7 @@ namespace ControllerSupport
 
     [HarmonyPatch(typeof(GameScript), "RefreshHoldingSlot")]
     [HarmonyGadget("Controller Support")]
-    internal static class InventoryHeldEmptyPatch
+    public static class InventoryHeldEmptyPatch
     {
         [HarmonyPostfix]
         private static void Postfix(GameScript __instance) { InventoryItemLifecycle.ClearIfEmpty(__instance); }
@@ -168,7 +172,19 @@ namespace ControllerSupport
 {
     [HarmonyPatch(typeof(GameScript), "EmblemForge")]
     [HarmonyGadget("Controller Support")]
-    internal static class InventoryEmblemContextPatch
+    public static class InventoryEmblemContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance)
+        { InventoryItemLifecycle.ObserveContext(__instance); }
+    }
+}
+
+namespace ControllerSupport
+{
+    [HarmonyPatch(typeof(GameScript), "Trash")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryTrashContextPatch
     {
         [HarmonyPostfix]
         private static void Postfix(GameScript __instance)

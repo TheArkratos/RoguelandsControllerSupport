@@ -32,19 +32,21 @@ internal static class Program
     { Physics.Hit=target; Input.mousePosition=new Vector3(Input.mousePosition.x+3,0,0); Next(); Next(); }
     private static bool Left => ControllerMenuSelection.VirtualMouseButtonDown(0);
     private static bool Right => ControllerMenuSelection.VirtualMouseButtonDown(1);
-    private static void Setup(bool mode=false,string config=null)
+    private static void Setup(bool mode=false,string config=null,bool trasher=false)
     {
         ControllerMenuSelection.Reset(); GadgetCoreAPI.Frozen=false; GadgetCoreAPI.emblemForgeRecipes.Clear();
         game=new GameScript { inventoryMain=new GameObject("inventory"), inventoryBar=new GameObject("bar"),
             menuStorage=new GameObject("storage"), menuEmblemForge=new GameObject("forge"),
             holdingItemObj=new GameObject("held") };
         game.menuStorage.activeInHierarchy=false;
+        game.menuTrasher=new GameObject("trasher");
+        game.menuTrasher.activeInHierarchy=trasher; game.menuEmblemForge.activeInHierarchy=!trasher;
         input=Add(game.inventoryMain,"6",0); other=Add(game.inventoryMain,"7",4);
         equipped=Add(game.inventoryMain,"36",8); hotkey=Add(game.inventoryBar,"0",-4);
-        var wrapper=new GameObject("-"); game.menuEmblemForge.transform.Add(wrapper.transform);
-        toggle=Add(wrapper,"bEmblem",20,0);
+        var wrapper=new GameObject("-"); (trasher?game.menuTrasher:game.menuEmblemForge).transform.Add(wrapper.transform);
+        toggle=Add(wrapper,trasher?"bTrasher":"bEmblem",20,0);
         for(int i=0;i<45;i++) game.inventory[i]=new Item();
-        game.emblemForging=mode;
+        game.emblemForging=!trasher&&mode; game.trashing=trasher&&mode;
         GameScript.inventoryOpen=true; GameScript.pausing=GameScript.dead=GameScript.buildMode=false;
         Input.left=Input.right=false; Input.mousePosition=Vector3.zero; Physics.Hit=input;
         pad=new JoystickInputState(); pad.Connect();
@@ -57,13 +59,25 @@ internal static class Program
         Collider target=Nav.SelectedCollider;
         if(Left&&target==toggle)
         {
-            if(game.holdingItem.id==0) { game.EmblemForging(); game.emblemAgain=false; }
+            if(game.holdingItem.id==0)
+            {
+                if(game.menuTrasher.activeInHierarchy) { game.Trasher(); game.trashAgain=false; }
+                else { game.EmblemForging(); game.emblemAgain=false; }
+            }
         }
         else if(target!=null&&(Left||Right))
         {
             int slot=int.Parse(target.gameObject.name);
             game.slotID=slot; // Native Update writes this BEFORE loader ForgeEmblem.
-            if(game.emblemForging&&Left&&game.holdingItem.id==0)
+            if(game.trashing&&Left&&game.holdingItem.id==0)
+            {
+                // Native TrashItem replaces the complete input in-place, using
+                // the effective native/loader GetItemWorth rather than mod pricing.
+                Item source=game.inventory[slot];
+                game.inventory[slot]=new Item { id=52,q=game.GetItemWorth(source.id)*source.q };
+                game.TrashCalls++; game.trashAgain=true; game.trashing=false; game.Trasher();
+            }
+            else if(game.emblemForging&&Left&&game.holdingItem.id==0)
             {
                 Item source=game.inventory[game.slotID];
                 Tuple<int,int> recipe;
@@ -75,7 +89,7 @@ internal static class Program
                 game.holdingItem=new Item { id=custom?recipe.Item1:source.id+100,q=quantity };
                 InventoryItemLifecycle.ReturnSuccess=false; // Generated output has no pickup origin.
             }
-            else if(!game.emblemForging&&game.holdingItem.id>0)
+            else if(!game.emblemForging&&!game.trashing&&game.holdingItem.id>0)
             {
                 if(game.emblemAgain) game.EmblemForging();
                 if(Right)
@@ -87,6 +101,85 @@ internal static class Program
             }
         }
         ControllerMenuSelection.EndNativeUpdate(); ControllerMenuSelection.Update(game);
+    }
+    private static void TrashScenarios()
+    {
+        Setup(trasher:true);
+        for(int step=0;step<3;step++)
+        {
+            ControllerMenuSelection.EndNativeUpdate(); pad.BeginFrame();
+            pad.Apply(new RawJoystickEvent { Type=2,Number=3,Value=25000 }); Frame();
+            ControllerMenuSelection.EndNativeUpdate(); pad.BeginFrame();
+            pad.Apply(new RawJoystickEvent { Type=2,Number=3,Value=0 }); Frame();
+        }
+        Check(Nav.SelectedSlot==130,"Right-stick navigation reaches nested Trasher toggle from inventory");
+        Check(ItemConversionContext.ActionLabel(game,130)=="Enable trashing","Toggle hint names the native action");
+        toggle.enabled=false; Next(); Check(Nav.SelectedSlot!=130,"Disabled native Trasher button is not selectable");
+        toggle.enabled=true; Next(); Hover(toggle);
+        Check(Nav.SelectedSlot==130,"Nested native Trasher toggle is selectable");
+        Button(0); Check(Left&&!Right,"Primary projects a native Trasher toggle click"); Native();
+        Check(game.trashing&&game.ToggleCalls==1,"Native toggle owns Trasher mode");
+        Check(ItemConversionContext.ActionLabel(game,130)=="Cancel trashing"&&ItemConversionContext.CancelLabel(game)=="Cancel trashing",
+            "Mode and B hints both explain cancellation");
+        Next(); Check(!Left,"Held toggle primary cannot convert on mode entry");
+        Button(0,false); Hover(input); game.inventory[6]=new Item{id=21,q=25};
+        game.inventory[7]=new Item{id=22,q=7}; game.slotID=7; Button(0);
+        Check(Left,"Eligible backpack conversion reaches native click"); Native();
+        Check(game.slotID==6&&game.TrashCalls==1&&game.inventory[6].id==52&&game.inventory[6].q==50,
+            "Native selected stack becomes exact Credits in the original slot");
+        Check(game.inventory[7].q==7&&game.holdingItem.id==0&&game.trashing&&game.trashAgain,
+            "Trasher leaves neighbors and held item intact and retains native mode");
+        Next(); Check(!Left&&game.TrashCalls==1,"Held primary cannot convert twice");
+        Button(0,false); Button(0); Check(!Left&&game.TrashCalls==1,"Credits cannot be converted again");
+        Button(0,false); Button(1);
+        Check(!game.trashing&&!game.trashAgain&&GameScript.inventoryOpen,"B cancels mode before closing");
+        Button(1,false); Button(1); Check(!GameScript.inventoryOpen,"Next B closes cancelled Trasher");
+
+        foreach(var item in new[]{new Item{id=0,q=25},new Item{id=21,q=0},new Item{id=51,q=10},new Item{id=52,q=10}})
+        {
+            Setup(true,trasher:true); game.inventory[6]=item; Button(0);
+            Check(!Left&&game.TrashCalls==0,"Empty/protected stack never converts: "+item.id+"/"+item.q);
+        }
+        Setup(true,trasher:true); Hover(hotkey); game.inventory[0]=new Item{id=21,q=10}; Button(0);
+        Check(!Left,"Hotkey conversion remains outside first Trasher slice");
+        Setup(true,trasher:true); Hover(equipped); game.inventory[36]=new Item{id=21,q=10}; Button(0);
+        Check(!Left,"Equipped conversion remains protected");
+        foreach(int action in new[]{2,3})
+        {
+            Setup(true,trasher:true); game.inventory[6]=new Item{id=21,q=25}; Button(action);
+            Check(!Left&&!Right&&game.inventory[6].q==25&&game.TransferInventoryCalls==0,
+                "Secondary/transfer cannot mutate active Trasher input: "+action);
+        }
+        Setup(true,trasher:true); game.inventory[6]=new Item{id=5000,q=3}; game.ItemValue=id=>123;
+        Button(0); Native(); Check(game.inventory[6].id==52&&game.inventory[6].q==369&&game.WorthCalls==1,
+            "Custom registered value remains native and evaluated only on conversion");
+        Setup(true,trasher:true); game.inventory[6]=new Item{id=21,q=25};
+        for(int i=0;i<1000;i++) { Next(); ControllerMenuSelection.Update(game); }
+        Check(game.WorthCalls==0&&game.TrashCalls==0&&game.inventory[6].q==25,"Idle hints never price or convert items");
+        Check(InventoryFeedback.Primary=="Convert to Credits","Hint describes destructive Credits conversion");
+        Setup(true,trasher:true); game.holdingItem=new Item{id=21,q=3}; game.trashAgain=true; Button(0);
+        Check(!Left&&!game.trashing&&!game.trashAgain&&game.holdingItem.q==3,
+            "Primary with held item cancels conversion without consuming/placing it");
+        Next(); Button(0,false); Button(0); Check(Left,"Fresh primary resumes ordinary held-item placement"); Native();
+        Check(game.inventory[6].q==3&&game.holdingItem.id==0,"Mode-off placement reuses shared inventory action");
+        Setup(trasher:true); Hover(toggle); game.holdingItem=new Item{id=21,q=3}; Button(0);
+        Check(!Left&&!game.trashing,"Toggle requires empty hands");
+        Setup(true,trasher:true); game.inventory[6]=new Item{id=21,q=25}; InventoryItemLifecycle.BlockMutations=true; Button(0);
+        Check(!Left&&game.TrashCalls==0,"Drop quarantine prevents conversion");
+        foreach(int action in new[]{0,1,2,3,5,6,7})
+        {
+            Setup(true,trasher:true); game.inventory[6]=new Item{id=21,q=25}; GadgetCoreAPI.Frozen=true; Button(action);
+            Check(!Left&&!Right&&game.trashing&&GameScript.inventoryOpen&&game.inventory[6].q==25,
+                "Frozen input preserves Trasher state: "+action);
+            GadgetCoreAPI.Frozen=false; Next(); Check(!Left&&game.trashing,"Unfreeze requires fresh Trasher action: "+action);
+        }
+        Setup(true,trasher:true); game.inventory[6]=new Item{id=21,q=25}; Input.mousePosition=new Vector3(10,0,0); Button(0);
+        Check(!Left,"Deliberate physical mouse wins simultaneous conversion");
+        Setup(false,BindingConfig.DefaultText.Replace("MenuActivate = Joystick1Button0","MenuActivate = Joystick1Button12"),true);
+        Hover(toggle); Button(0); Check(!Left,"Default A inactive after remap for Trasher");
+        Button(0,false); Button(12); Check(Left,"Remapped primary toggles Trasher");
+        Setup(true,trasher:true); game.menuTrasher.activeInHierarchy=false; Next(); Button(0);
+        Check(!Left,"Closed Trasher pane cannot convert");
     }
     private static void Main()
     {
@@ -165,6 +258,7 @@ internal static class Program
         Button(0,false); Button(12); Check(Left,"Remapped primary activates forge toggle");
         Setup(true); game.menuEmblemForge.activeInHierarchy=false; Next(); Button(0);
         Check(!Left,"Closing forge pane blocks mode operation");
-        Console.WriteLine("Emblem forge integration: "+checks+" checks passed.");
+        TrashScenarios();
+        Console.WriteLine("Item conversion integration (Emblem Forge + Item Trasher): "+checks+" checks passed.");
     }
 }

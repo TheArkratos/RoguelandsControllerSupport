@@ -15,7 +15,7 @@
     <Compile Include="../../src/JoystickInputState.cs" Link="JoystickInputState.cs" />
     <Compile Include="../../src/RawJoystickEvent.cs" Link="RawJoystickEvent.cs" />
     <Compile Include="Program.cs" />
-    <Compile Include="../../src/EmblemForgeContext.cs" Link="EmblemForgeContext.cs" />
+    <Compile Include="../../src/ItemConversionContext.cs" Link="ItemConversionContext.cs" />
     <Compile Include="../inventory_actions_repro/Stubs.cs" />
       <Compile Include="../PortalMenuContextStub.cs" Link="PortalMenuContextStub.cs" />
   </ItemGroup>

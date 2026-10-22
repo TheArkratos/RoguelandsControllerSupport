@@ -17,6 +17,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="../inventory_actions_repro/Stubs.cs" />
       <Compile Include="../PortalMenuContextStub.cs" Link="PortalMenuContextStub.cs" />
-      <Compile Include="../EmblemForgeContextStub.cs" Link="EmblemForgeContextStub.cs" />
+      <Compile Include="../ItemConversionContextStub.cs" Link="ItemConversionContextStub.cs" />
   </ItemGroup>
 </Project>

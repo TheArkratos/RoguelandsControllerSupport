@@ -50,7 +50,7 @@ dotnet "$csc_dll" \
     "$project_dir/src/SelectionCornerRenderer.cs" \
     "$project_dir/src/InventorySelectionNavigator.cs" \
     "$project_dir/src/PortalMenuContext.cs" \
-    "$project_dir/src/EmblemForgeContext.cs" \
+    "$project_dir/src/ItemConversionContext.cs" \
     "$project_dir/src/ControllerMenuSelection.cs" \
     "$project_dir/src/InventoryItemLifecycle.cs" \
     "$project_dir/src/InventoryLifecyclePatches.cs" \
