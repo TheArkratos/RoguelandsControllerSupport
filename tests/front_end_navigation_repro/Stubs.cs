@@ -1,0 +1,140 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+
+namespace UnityEngine
+{
+    public class Object
+    {
+        public static implicit operator bool(Object value) { return value != null; }
+    }
+    public class GameObject : Object
+    {
+        private readonly List<GameObject> children = new List<GameObject>();
+        public string name;
+        public bool activeInHierarchy = true;
+        public int layer;
+        public Collider collider;
+        public GameObject(string name) { this.name = name; }
+        public void AddChild(GameObject child) { children.Add(child); }
+        public T[] GetComponentsInChildren<T>() where T : class
+        {
+            var found = new List<T>();
+            foreach (GameObject child in children)
+            {
+                if (child.collider is T item) found.Add(item);
+                found.AddRange(child.GetComponentsInChildren<T>());
+            }
+            return found.ToArray();
+        }
+    }
+    public class Collider : Object
+    {
+        public GameObject gameObject;
+        public bool enabled = true;
+        public Bounds bounds;
+        public Collider(GameObject gameObject)
+        { this.gameObject = gameObject; gameObject.collider = this; }
+    }
+    public struct Bounds { public Vector3 center, size; }
+    public struct Vector3
+    {
+        public float x, y, z;
+        public Vector3(float x, float y, float z = 0f) { this.x = x; this.y = y; this.z = z; }
+        public float sqrMagnitude { get { return x * x + y * y + z * z; } }
+        public static Vector3 operator -(Vector3 a, Vector3 b)
+        { return new Vector3(a.x - b.x, a.y - b.y, a.z - b.z); }
+    }
+    public struct Ray { }
+    public struct RaycastHit { public Collider collider; }
+    public static class Physics
+    {
+        public static bool Raycast(Ray ray, out RaycastHit hit, float distance)
+        { hit = new RaycastHit(); return false; }
+    }
+    public class Camera : Object
+    {
+        public static Camera main = new Camera();
+        public Ray ScreenPointToRay(Vector3 position) { return new Ray(); }
+        public Vector3 WorldToScreenPoint(Vector3 position) { return position; }
+    }
+    public static class Input
+    {
+        public static Vector3 mousePosition { get; set; }
+        public static bool NativeCancel, EscapeDown;
+        public static bool GetButtonDown(string name) { return NativeCancel; }
+        public static bool GetKeyDown(KeyCode key) { return EscapeDown; }
+        public static bool GetMouseButtonDown(int button) { return false; }
+    }
+    public enum KeyCode { Escape }
+    public static class Time { public static float unscaledTime; }
+    public static class Mathf
+    {
+        public static float Abs(float value) { return Math.Abs(value); }
+        public static float Min(float a, float b) { return Math.Min(a, b); }
+    }
+    public static class Debug
+    {
+        public static void Log(string message) { }
+        public static void LogWarning(string message) { }
+    }
+}
+
+public class Menuu : UnityEngine.Object
+{
+    public UnityEngine.GameObject menuDeleteChar, menuStuffSelect, menuCreateCharacter;
+    public UnityEngine.GameObject menuCharSelect, menuOptions, menuData, menuMain;
+}
+public class MenuScript : UnityEngine.Object
+{
+    public static bool inGame;
+    public UnityEngine.GameObject menuServer, menu;
+}
+public class GameScript : UnityEngine.Object
+{
+    public static bool pausing;
+    public UnityEngine.GameObject menuPause;
+}
+
+namespace GadgetCore.API
+{
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class HarmonyGadgetAttribute : Attribute
+    { public HarmonyGadgetAttribute(string name) { } }
+}
+
+namespace HarmonyLib
+{
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class HarmonyPatch : Attribute
+    { public HarmonyPatch(Type type, string method) { } }
+    [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyPrefix : Attribute { }
+    [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyPostfix : Attribute { }
+    [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyTranspiler : Attribute { }
+    public class CodeInstruction
+    {
+        public object operand;
+        public CodeInstruction(object value) { operand=value; }
+        public CodeInstruction(CodeInstruction other) { operand = other.operand; }
+    }
+}
+
+namespace ControllerSupport
+{
+    internal static class ControllerMenuSelection
+    {
+        internal static UnityEngine.Vector3 VirtualMousePosition()
+        { return UnityEngine.Input.mousePosition; }
+        internal static bool VirtualMouseButtonDown(int button)
+        { return UnityEngine.Input.GetMouseButtonDown(button); }
+    }
+    internal class SelectionCornerRenderer
+    {
+        public bool IsAlive { get { return true; } }
+        public static SelectionCornerRenderer TryCreate(float scale, int order, Action<string> warn)
+        { return new SelectionCornerRenderer(); }
+        public void Show(UnityEngine.Collider collider) { }
+        public void Hide() { }
+        public void Dispose() { }
+    }
+}

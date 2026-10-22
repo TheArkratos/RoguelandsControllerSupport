@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../src/BindingConfig.cs" Link="BindingConfig.cs" />
+    <Compile Include="../../src/RawJoystickEvent.cs" Link="RawJoystickEvent.cs" />
+    <Compile Include="../../src/JoystickInputState.cs" Link="JoystickInputState.cs" />
+  </ItemGroup>
+</Project>
