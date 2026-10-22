@@ -36,7 +36,7 @@ namespace ControllerSupport
     {
         internal static string LastReason;
         internal static void SetContext(GameScript game, UnityEngine.Collider selected, bool controller,
-            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null) { }
+            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false) { }
         internal static void Reject(string reason) { LastReason=reason; }
         internal static void Reset() { LastReason=null; }
     }

@@ -4,6 +4,8 @@
 <Compile Include="../../src/ControllerAim.cs" />
 <Compile Include="../../src/ControllerAimAssist.cs" />
 <Compile Include="../../src/AimAssistGeometry.cs" />
+<Compile Include="../../src/AimLeadPrediction.cs" />
+<Compile Include="../../src/StaffTargetCrosshair.cs" />
 <Compile Include="../../src/AimAssistPatches.cs" />
 <Compile Include="../../src/JoystickInputState.cs" />
 <Compile Include="../../src/RawJoystickEvent.cs" />

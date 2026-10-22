@@ -267,11 +267,6 @@ namespace ControllerSupport
                    !PlayerScript.beaming && BoundPressed("Pause");
         }
 
-        internal static bool CloseAimHeld()
-        {
-            return Refresh() && SafeActions() && GameScript.combatMode && BoundHeld("CloseAim");
-        }
-
         internal static bool ExplorationPrimaryHeld()
         {
             return Refresh() && !InventoryOwnsInput() && BoundHeld("PrimaryAction");

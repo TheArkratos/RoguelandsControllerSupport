@@ -103,7 +103,7 @@ namespace ControllerSupport
                 { copy.opcode=OpCodes.Call; copy.operand=AccessTools.Method(typeof(ControllerAimAssist),"CursorX"); }
                 if(copy.opcode==OpCodes.Ldsfld && Equals(copy.operand,y))
                 { copy.opcode=OpCodes.Call; copy.operand=AccessTools.Method(typeof(ControllerAimAssist),"CursorY"); }
-                if(staff && Equals(copy.operand,mouse)) copy.operand=AccessTools.Method(typeof(ControllerAim),"AttackMousePosition");
+                if(staff && Equals(copy.operand,mouse)) copy.operand=AccessTools.Method(typeof(ControllerAimAssist),"StaffMousePosition");
                 output.Add(copy);
                 if(attack && instruction.opcode==OpCodes.Stfld && Equals(instruction.operand,attacking))
                 {
@@ -144,11 +144,18 @@ namespace ControllerSupport
     [HarmonyPatch(typeof(PlayerScript),"Staff"),HarmonyGadget("Controller Support")]
     public static class AimAssistStaffSpawnPatch
     {
+        private static PlayerScript spawningPlayer;
+        [HarmonyPrefix]
+        private static void Prefix(PlayerScript __instance,NetworkPlayer pp,out PlayerScript __state)
+        { __state=spawningPlayer; spawningPlayer=ControllerAimAssist.Local(__instance) && pp==Network.player ? __instance : null; }
+        [HarmonyFinalizer]
+        private static Exception Finalizer(Exception __exception,PlayerScript __state)
+        { spawningPlayer=__state; return __exception; }
         internal static UnityEngine.Object Capture(UnityEngine.Object spawned)
         {
             GameObject obj=spawned as GameObject;
             Projectile projectile=obj?obj.GetComponent<Projectile>():null;
-            if(projectile) ControllerAimAssist.Retain(projectile,ControllerAimAssist.Current);
+            if(projectile) ControllerAimAssist.CaptureStaff(projectile,spawningPlayer);
             return spawned;
         }
         [HarmonyTranspiler]

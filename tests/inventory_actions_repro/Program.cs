@@ -23,6 +23,7 @@ internal static class Program
     private static void Setup(bool storage=false, string config=null, int openingButton=-1)
     {
         ControllerMenuSelection.Reset();
+        MenuScript.player = new GameObject("player"); GadgetCore.API.GadgetCoreAPI.Frozen = false;
         warning=null; GadgetCore.API.GadgetCoreAPI.ThrowOnCopy=false;
         game=new GameScript { inventoryMain=new GameObject("inventory"), inventoryBar=new GameObject("bar"),
             menuStorage=new GameObject("storage"), holdingItemObj=new GameObject("held") };
@@ -89,6 +90,7 @@ internal static class Program
     }
     private static void Main()
     {
+        StoragePaging();
         Setup(); game.inventory[6]=new Item{id=21,q=8}; Press(0);
         Check(Left&&!Right,"Ordinary inventory A left-click");
         Check(ControllerMenuSelection.VirtualMousePosition().x==6,"Same-frame selected projection");
@@ -255,5 +257,73 @@ internal static class Program
         Press(0); Check(!Left,"Insufficient Credits blocks upgrade dispatch"); Release(0);
         game.Credits=game.UpgradeCost; Press(0); Check(Left,"Exact native upgrade cost permits dispatch");
         Console.WriteLine("Production inventory action routing: "+checks+" checks passed.");
+    }
+
+    private static void Pages(int last)
+    {
+        game.SetStorageLevel(last);
+        for (int i = 1; i < 12; i++)
+            game.storageButton[i] = Add(game.menuStorage, "page" + i, "Untagged", 100 + i).gameObject;
+        pad.BeginFrame(); Frame(); ControllerMenuSelection.EndNativeUpdate();
+    }
+
+    private static void StoragePaging()
+    {
+        Setup(true); Pages(11);
+        Item held = new Item { id=21, q=7, extraData="source metadata" }; game.holdingItem=held;
+        for (int i = 1; i <= 12; i++)
+        {
+            Press(5);
+            Check(game.currentStoragePage == i % 12 && game.PageCalls == i, "RB ordered page cycle " + i);
+            Check(ReferenceEquals(game.holdingItem,held) && held.q==7 && held.extraData=="source metadata" &&
+                InventoryItemLifecycle.DropCalls==0, "paging preserves held stack/metadata without drop " + i);
+            Check(!Left && !Right && ControllerMenuSelection.VirtualMousePosition().x==6,
+                "paging preserves selected backpack cell " + i);
+            pad.BeginFrame(); Frame(1f); Check(game.PageCalls==i, "held RB never repeats " + i);
+            Release(5);
+        }
+        Press(4); Check(game.currentStoragePage==11, "LB wraps page 1 to page 12"); Release(4);
+        Press(4); Check(game.currentStoragePage==10, "LB selects previous page"); Release(4);
+        Collider chest=game.menuStorage.transform.GetChild(12).GetComponent<Collider>();
+        Hover(chest); Press(5);
+        Check(game.currentStoragePage==11 && ControllerMenuSelection.VirtualMousePosition().x==72,
+            "paging retains selected storage cell");
+        Release(5);
+        Setup(true); Pages(2); Press(4); Check(game.currentStoragePage==2, "LB wraps across unlocked pages only");
+        Release(4); Press(5); Check(game.currentStoragePage==0, "RB wraps last unlocked page to first"); Release(5);
+        game.storageButton[1].activeInHierarchy=false;
+        Press(5); Check(game.currentStoragePage==2, "hidden page skipped"); Release(5);
+        game.SetStorageLevel(0); game.currentStoragePage=0; int calls=game.PageCalls;
+        Press(5); Check(game.PageCalls==calls && InventoryItemLifecycle.DropCalls==0, "one page reserves RB without dropping"); Release(5);
+        Setup(true, openingButton:5); Pages(11);
+        Check(game.PageCalls==0 && InventoryItemLifecycle.DropCalls==0, "opening-held RB neither pages nor drops");
+        Release(5); Press(5); Check(game.currentStoragePage==1, "release rearms opening bumper"); Release(5);
+
+        foreach (string blocked in new[] { "freeze", "disconnect", "remote", "scene", "player" })
+        {
+            Setup(true); Pages(11); game.holdingItem=new Item {id=21,q=4};
+            if(blocked=="freeze") GadgetCore.API.GadgetCoreAPI.Frozen=true;
+            if(blocked=="disconnect") pad.Clear();
+            if(blocked=="remote") MenuScript.player.view.isMine=false;
+            if(blocked=="scene") Application.loadedLevel++;
+            if(blocked=="player") MenuScript.player=new GameObject("replacement");
+            Press(5); Check(game.PageCalls==0 && InventoryItemLifecycle.DropCalls==0 && game.holdingItem.q==4,
+                "blocked paging/drop in " + blocked);
+            GadgetCore.API.GadgetCoreAPI.Frozen=false; MenuScript.player.view.isMine=true;
+            if(blocked=="disconnect") pad.Connect();
+            pad.BeginFrame(); Frame(); Check(game.PageCalls==0, "held blocked press cannot replay after "+blocked);
+            Release(5); Press(5); Check(game.currentStoragePage==1, "fresh edge recovers after "+blocked);
+        }
+        Setup(true); Pages(11);
+        pad.BeginFrame(); pad.Apply(new RawJoystickEvent {Type=1,Number=4,Value=1});
+        pad.Apply(new RawJoystickEvent {Type=1,Number=5,Value=1}); Frame();
+        Check(game.PageCalls==0 && InventoryItemLifecycle.DropCalls==0, "simultaneous bumpers cancel without drop");
+        Setup(true, BindingConfig.DefaultText.Replace("MenuDrop = Joystick1Button5","MenuDrop = Joystick1Button12"));
+        Pages(11); game.holdingItem=new Item{id=21,q=3}; Press(5);
+        Check(game.currentStoragePage==1 && InventoryItemLifecycle.DropCalls==0, "RB pages despite remapped drop"); Release(5);
+        Press(12); Check(InventoryItemLifecycle.DropCalls==1, "non-bumper remapped drop remains usable in storage");
+        Setup(true, BindingConfig.DefaultText.Replace("MenuActivate = Joystick1Button0","MenuActivate = Joystick1Button4"));
+        Pages(11); Press(4);
+        Check(game.currentStoragePage==11 && !Left, "bumper paging takes priority over mapped primary");
     }
 }

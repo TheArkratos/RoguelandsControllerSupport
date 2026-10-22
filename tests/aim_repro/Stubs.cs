@@ -109,9 +109,4 @@ namespace ControllerSupport
         }
     }
 
-    internal static class ControllerGameplayInput
-    {
-        internal static bool HalfRadius;
-        internal static bool CloseAimHeld() { return HalfRadius; }
-    }
 }

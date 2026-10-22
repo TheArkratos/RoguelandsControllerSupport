@@ -40,19 +40,20 @@ internal static class Program
         if (Math.Abs(second.x) > 0.01f || Math.Abs(second.y - 14f) > 0.01f)
             throw new Exception("Crosshair never reached the new direction.");
 
+        input.Apply(new RawJoystickEvent { Type = 1, Number = 10, Value = 1 });
         input.Apply(new RawJoystickEvent { Type = 2, Number = 4, Value = 0 });
         Time.frameCount = 10;
         Time.unscaledTime = 10f / 60f;
         if (!ControllerAim.TryWorldPoint(out second) || Math.Abs(second.y - 14f) > 0.01f)
             throw new Exception("Neutral stick did not retain last direction.");
-        ControllerGameplayInput.HalfRadius = true;
-        if (!ControllerAim.TryWorldPoint(out second) || Math.Abs(second.y - 7f) > 0.01f)
-            throw new Exception("Half-radius aim did not update immediately.");
-        Console.WriteLine("Neutral-direction hold and half-radius checks passed.");
+        if (!input.ButtonHeld(10)) throw new Exception("R3 fixture input was not held.");
+        if (!ControllerAim.TryWorldPoint(out second) || Math.Abs(second.y - 14f) > 0.01f)
+            throw new Exception("Holding R3 changed the full aim radius.");
+        Console.WriteLine("Neutral-direction hold and full-radius R3 checks passed.");
 
         // The actual visible crosshair uses ActionCursor, not ControllerCursor.
         // The game's usingController flag can remain false while firing in place.
-        ControllerGameplayInput.HalfRadius = false;
+        input.Apply(new RawJoystickEvent { Type = 1, Number = 10, Value = 0 });
         Menuu.usingController = false;
         ActionCursor visible = new ActionCursor();
         visible.gameObject.name = "actionCursor";

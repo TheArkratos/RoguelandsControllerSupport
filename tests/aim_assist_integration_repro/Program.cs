@@ -20,11 +20,29 @@ internal static class Program {
  private static JoystickInputState pad;private static PlayerScript local;private static int checks;
  private static void Check(bool b,string s){checks++;if(!b)throw new Exception(s);}
  private static void Setup(){ControllerAimAssist.Reset();PlayerScript.beaming=false;GadgetCore.API.GadgetCoreAPI.Frozen=false;Physics.Searches=0;Physics.Candidates=new Collider[0];Input.Click=false;Input.mousePosition=Vector3.zero;GameScript.combatMode=true;GameScript.dead=GameScript.inventoryOpen=GameScript.pausing=GameScript.talking=GameScript.buildMode=false;
-  var p=new GameObject("player");local=p.AddComponent<PlayerScript>();p.AddComponent<NetworkView>();MenuScript.player=p;pad=new JoystickInputState();pad.Connect();pad.Apply(new RawJoystickEvent{Type=2,Number=3,Value=32767});Time.frameCount++;Time.unscaledTime+=1;ControllerAim.Configure(()=>pad);ControllerAimAssist.Configure();ControllerAimAssist.Toggle();}
+  Resources.Assets.Clear();GameScript.equippedIDs=new[]{404};var p=new GameObject("player");local=p.AddComponent<PlayerScript>();local.shot=p.transform;p.AddComponent<NetworkView>();MenuScript.player=p;pad=new JoystickInputState();pad.Connect();pad.Apply(new RawJoystickEvent{Type=2,Number=3,Value=32767});Time.frameCount++;Time.unscaledTime+=1;ControllerAim.Configure(()=>pad);ControllerAimAssist.Configure();ControllerAimAssist.Toggle();}
  private static BoxCollider Enemy(float x,float y,float width=1,float height=1){var e=new GameObject("enemy"){layer=9};e.transform.position=new Vector3(x,y,0);e.AddComponent<EnemyScript>();var c=e.AddComponent<BoxCollider>();c.size=new Vector3(width,height,1);return c;}
  private static Vector3 Point(){return ControllerAim.AttackMousePosition();}
  private static void Next(){Time.frameCount++;Time.unscaledTime+=.5f;}
  private static MethodInfo Private(Type t,string n)=>t.GetMethod(n,BindingFlags.Static|BindingFlags.NonPublic);
+ private static Projectile SpawnStaff(float speed,Vector3 position) {
+  var obj=new GameObject("staff-live");obj.transform.position=position;var projectile=obj.AddComponent<Projectile>();projectile.speed=speed;projectile.isStaff=true;
+  object[] scope={local,Network.player,null};Private(typeof(AimAssistStaffSpawnPatch),"Prefix").Invoke(null,scope);
+  AimAssistStaffSpawnPatch.Capture(obj);Private(typeof(AimAssistStaffSpawnPatch),"Finalizer").Invoke(null,new[]{null,scope[2]});return projectile;
+ }
+ private static Vector3 StaffTick(Projectile projectile) {
+  object[] scope={new Projectile.UpdatePosToken{Owner=projectile},null};Private(typeof(AimAssistIteratorPatch),"Prefix").Invoke(null,scope);
+  try{return ControllerAimAssist.StaffMousePosition();}finally{Private(typeof(AimAssistIteratorPatch),"Finalizer").Invoke(null,new[]{null,scope[1]});}
+ }
+ private static void GunPrefab(float speed) {var prefab=new GameObject("shot404");prefab.AddComponent<Projectile>().speed=speed;Resources.Assets["proj/shot404"]=prefab;}
+ private static GameObject NativeGlyph(out GameObject root) {
+  root=new GameObject("actionCursor");root.AddComponent<ActionCursor>();
+  var glyph=new GameObject("-1");glyph.transform.parent=root.transform;glyph.transform.position=new Vector3(0,0,-.43286f);glyph.transform.rotation=Quaternion.Euler(180,0,0);
+  glyph.AddComponent<MeshFilter>().sharedMesh=new UnityEngine.Object();glyph.AddComponent<Animation>();var material=new Material(new Shader{name="native-no-tint"});material.mainTexture=new Texture2D{name="actionCursor"};glyph.AddComponent<MeshRenderer>().sharedMaterial=material;
+  var guides=new GameObject("-1 giant guide");guides.transform.parent=root.transform;guides.transform.lossyScale=new Vector3(100,100,100);guides.AddComponent<MeshRenderer>().sharedMaterial=new Material(new Shader()){mainTexture=new Texture2D{name="guide"}};
+  return glyph;
+ }
+ private static GameObject[] RedGlyphs()=>UnityEngine.Object.FindObjectsOfType<GameObject>().Where(g=>g.name=="ControllerSupport.StaffTargetCrosshair").ToArray();
  private static void Main(){
   Setup();var near=Enemy(8,.4f);var far=Enemy(14,0);Physics.Candidates=new Collider[]{far,near};Vector3 visual;ControllerAim.TryWorldPoint(out visual);
   Check(Physics.Searches==0&&ControllerAimAssist.SearchCount==0,"Enabled idle/visual aim never searches");Check(Point().y==0&&Physics.Searches==0,"Unscoped mouse adapter remains normal");
@@ -40,7 +58,7 @@ internal static class Program {
   Check(ControllerAimAssist.Current.Target==far&&!ControllerAimAssist.Current.Lost,"Nested helper restores next attack context");
   var projectile=new GameObject("staff").AddComponent<Projectile>();ControllerAimAssist.Retain(projectile,ControllerAimAssist.Current);ControllerAimAssist.Restore(null);
   near.gameObject.GetComponent<EnemyScript>().dead=false;ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
-  old=ControllerAimAssist.Push(ControllerAimAssist.Retained(projectile));Check(ControllerAimAssist.Current.Target==far,"Staff retains originating attack independently of newer attack");far.transform.position=new Vector3(14,5,0);Check(Point().y==0&&ControllerAimAssist.Current.Lost,"Sustained target leaving cone falls back without reacquisition");far.transform.position=new Vector3(14,0,0);Check(Point().y==0&&ControllerAimAssist.Current.Lost&&Physics.Searches==3,"Lost sustained target remains lost even when returning");ControllerAimAssist.Restore(old);
+  old=ControllerAimAssist.Push(ControllerAimAssist.Retained(projectile));Check(ControllerAimAssist.Current.Target==far,"Delayed effect retains originating attack independently of newer attack");far.transform.position=new Vector3(14,5,0);Check(Point().y==0&&ControllerAimAssist.Current.Lost,"Ordinary delayed effect leaving cone falls back without reacquisition");far.transform.position=new Vector3(14,0,0);Check(Point().y==0&&ControllerAimAssist.Current.Lost&&Physics.Searches==3,"Lost ordinary delayed effect remains lost even when returning");ControllerAimAssist.Restore(old);
   old=ControllerAimAssist.Push(ControllerAimAssist.Acquire());Input.mousePosition=new Vector3(100,90,0);Next();Check(Point().x==100&&ControllerAimAssist.Current.Lost,"Physical mouse takeover returns exact native mouse and loses effect lock");ControllerAimAssist.Restore(old);
   Setup();near=Enemy(8,1.5f,1,1);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Check(ControllerAimAssist.Current.Target==near,"Hitbox crossing cone qualifies even when center outside");assisted=Point();Check(Math.Abs(Math.Atan2(assisted.y,assisted.x)*180/Math.PI)<=8.0001&&Math.Abs(Math.Atan2(assisted.y,assisted.x)*180/Math.PI)>=7.9999,"Outside center clamps firing axis to eight-degree cone boundary");
   Setup();float sevenY=(float)(8*Math.Tan(7*Math.PI/180));near=Enemy(8,sevenY,.01f,.01f);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
@@ -50,13 +68,13 @@ internal static class Program {
   Setup();near=Enemy(8,0);near.gameObject.AddComponent<NetworkView>().isMine=false;Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Check(ControllerAimAssist.Current.Target==near,"Enemy network ownership does not exclude local aiming");
   var remote=new GameObject("remote").AddComponent<PlayerScript>();remote.gameObject.AddComponent<NetworkView>().isMine=false;int searches=Physics.Searches;ControllerAimAssist.BeginAttack(new AttackToken{Player=remote});Check(Physics.Searches==searches&&ControllerAimAssist.Current==null,"Remote player attack never acquires local assist");
   Setup();near=Enemy(8,0);Physics.Candidates=new[]{near};var chip=typeof(AimAssistSkillPatch);object[] args={12,null};Private(chip,"Prefix").Invoke(null,args);Check(Physics.Searches==1&&ControllerAimAssist.Current.Target==near,"Validated offensive chip activation acquires once");Private(chip,"Finalizer").Invoke(null,new[]{null,args[1]});Check(ControllerAimAssist.Current==null,"Offensive chip scope cleans up");args=new object[]{16,null};Private(chip,"Prefix").Invoke(null,args);Check(Physics.Searches==1&&ControllerAimAssist.Current==null,"Buff chip neither acquires nor changes targeting");Private(chip,"Finalizer").Invoke(null,new[]{null,args[1]});
-  var owner=typeof(Projectile.UpdatePosToken);var move=owner.GetMethod("MoveNext");var mouse=typeof(Input).GetProperty("mousePosition").GetGetMethod();var code=new[]{new CodeInstruction(OpCodes.Call,mouse)};var replaced=AimAssistIL.Replace(code,move).ToArray();Check(Equals(replaced[0].operand,typeof(ControllerAim).GetMethod("AttackMousePosition",BindingFlags.Static|BindingFlags.NonPublic)),"Verified staff continuation uses scoped attack adapter");Check(Equals(AimAssistIL.Replace(new[]{code[0],code[0]},move).First().operand,mouse),"Changed staff input IL fails closed");
+  var owner=typeof(Projectile.UpdatePosToken);var move=owner.GetMethod("MoveNext");var mouse=typeof(Input).GetProperty("mousePosition").GetGetMethod();var code=new[]{new CodeInstruction(OpCodes.Call,mouse)};var replaced=AimAssistIL.Replace(code,move).ToArray();Check(Equals(replaced[0].operand,typeof(ControllerAimAssist).GetMethod("StaffMousePosition",BindingFlags.Static|BindingFlags.NonPublic)),"Verified staff continuation uses projectile-owned tracking adapter");Check(Equals(AimAssistIL.Replace(new[]{code[0],code[0]},move).First().operand,mouse),"Changed staff input IL fails closed");
   var assembly=AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("NativeAttackShape"),AssemblyBuilderAccess.Run);var module=assembly.DefineDynamicModule("m");var tb=module.DefineType("<Attack>c__Iterator31");var mb=tb.DefineMethod("MoveNext",MethodAttributes.Public,typeof(bool),Type.EmptyTypes);var il=mb.GetILGenerator();il.Emit(OpCodes.Ldc_I4_0);il.Emit(OpCodes.Ret);var native=tb.CreateType().GetMethod("MoveNext");var attacking=typeof(PlayerScript).GetField("attacking");var attackCode=new[]{new CodeInstruction(OpCodes.Ldc_I4_1),new CodeInstruction(OpCodes.Stfld,attacking)};var patched=AimAssistIL.Replace(attackCode,native).ToArray();Check(patched.Length==4&&Equals(patched[3].operand,typeof(ControllerAimAssist).GetMethod("BeginAttack",BindingFlags.Static|BindingFlags.NonPublic)),"Acquisition hook injected immediately after actual native attacking assignment");Check(AimAssistIL.Replace(new[]{new CodeInstruction(OpCodes.Nop)},native).Count()==1,"Unknown native attack guard layout unchanged");
   Setup();near=Enemy(8,.4f);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});ControllerAimAssist.Toggle();Check(!ControllerAimAssist.Enabled&&ControllerAimAssist.Current.Lost&&Point().y==0,"Turning assist off invalidates active effects");ControllerAimAssist.Toggle();Check(ControllerAimAssist.Enabled&&Physics.Searches==1&&Point().y==0,"Re-enabling does not reacquire for existing effect");ControllerAimAssist.Reset();Check(!ControllerAimAssist.Enabled&&ControllerAimAssist.Current==null,"Session reset clears toggle and contexts");
   Setup();near=Enemy(8,.4f);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
-  var spawned=new GameObject("spawned");var staff=spawned.AddComponent<Projectile>();AimAssistStaffSpawnPatch.Capture(spawned);
-  var original=ControllerAimAssist.Current;ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
-  Check(ReferenceEquals(ControllerAimAssist.Retained(staff),original),"Staff spawn capture retains originating activation before later attack");
+  var spawned=new GameObject("spawned");var staff=spawned.AddComponent<Projectile>();object[] spawnScope={local,Network.player,null};Private(typeof(AimAssistStaffSpawnPatch),"Prefix").Invoke(null,spawnScope);AimAssistStaffSpawnPatch.Capture(spawned);Private(typeof(AimAssistStaffSpawnPatch),"Finalizer").Invoke(null,new[]{null,spawnScope[2]});
+  var original=ControllerAimAssist.Retained(staff);ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
+  Check(original!=null&&original.Staff==staff&&!ReferenceEquals(original,ControllerAimAssist.Current),"Correlated local staff spawn owns independent projectile state");
   var staffToken=new Projectile.UpdatePosToken{Owner=staff};object[] staffArgs={staffToken,null};Private(typeof(AimAssistIteratorPatch),"Prefix").Invoke(null,staffArgs);
   Check(ReferenceEquals(ControllerAimAssist.Current,original),"Staff continuation enters its own projectile scope");
   Private(typeof(AimAssistIteratorPatch),"Finalizer").Invoke(null,new[]{null,staffArgs[1]});
@@ -127,28 +145,93 @@ internal static class Program {
   var rays=GUI.Recorded.Where(d=>d.Color.r==1&&d.Color.g==0&&d.Color.a==.7f).ToArray();
   Check(rays.Length==2&&Math.Abs(rays[0].Matrix.angle-8)<.0001&&Math.Abs(rays[1].Matrix.angle+8)<.0001,"Visible cone boundaries represent eight degrees from the same horizontal controller axis");
   Check(rays.All(d=>Math.Abs(d.Matrix.origin.x)<.0001&&Math.Abs(d.Rect.width*Math.Cos(8*Math.PI/180)-20)<.0001),"Cone starts at player center and reaches actual viewport edge");
-  Check(Physics.Searches==0&&!GUI.Recorded.Any(d=>d.Color.g==1),"Idle cone draws without acquisition or yellow target");
+  Check(Physics.Searches==0&&!GUI.Recorded.Any(d=>d.Color.g==1&&d.Color.r==1),"Idle cone draws without acquisition or yellow target");
   near=Enemy(8,.4f);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});GUI.Recorded.Clear();draw.Invoke(marker,null);
-  Check(!GUI.Recorded.Any(d=>d.Color.g==1),"Acquisition alone does not show yellow outline");
+  Check(!GUI.Recorded.Any(d=>d.Color.g==1&&d.Color.r==1),"Acquisition alone does not show yellow outline");
   Point();GUI.Recorded.Clear();GUI.color=new Color(.3f,.4f,.5f);GUI.matrix=new Matrix4x4{angle=37};draw.Invoke(marker,null);
-  Check(GUI.Recorded.Count(d=>d.Color.g==1)==4,"Yellow hitbox bounds appear only after actual assisted aim resolution");
+  Check(GUI.Recorded.Count(d=>d.Color.g==1&&d.Color.r==1)==4,"Yellow hitbox bounds appear only after actual assisted aim resolution");
   Check(GUI.color.r==.3f&&GUI.color.g==.4f&&GUI.matrix.angle==37,"Overlay restores caller GUI color and matrix");
   Time.unscaledTime+=.2f;near.transform.position=new Vector3(9,.4f,0);GUI.Recorded.Clear();draw.Invoke(marker,null);
-  Check(GUI.Recorded.Any(d=>d.Color.g==1&&Math.Abs(d.Matrix.origin.x-8.5f)<.0001),"Brief applied-shot outline follows moving live hitbox");
-  Time.unscaledTime+=.16f;GUI.Recorded.Clear();draw.Invoke(marker,null);Check(GUI.Recorded.Any(d=>d.Color.g==1),"Discrete shot outline remains visible past the former 0.35-second duration");
-  Time.unscaledTime+=.35f;GUI.Recorded.Clear();draw.Invoke(marker,null);Check(!GUI.Recorded.Any(d=>d.Color.g==1),"Discrete shot outline expires after 0.7 seconds");
+  Check(GUI.Recorded.Any(d=>d.Color.g==1&&d.Color.r==1&&Math.Abs(d.Matrix.origin.x-8.5f)<.0001),"Brief applied-shot outline follows moving live hitbox");
+  Time.unscaledTime+=.16f;GUI.Recorded.Clear();draw.Invoke(marker,null);Check(GUI.Recorded.Any(d=>d.Color.g==1&&d.Color.r==1),"Discrete shot outline remains visible past the former 0.35-second duration");
+  Time.unscaledTime+=.35f;GUI.Recorded.Clear();draw.Invoke(marker,null);Check(!GUI.Recorded.Any(d=>d.Color.g==1&&d.Color.r==1),"Discrete shot outline expires after 0.7 seconds");
   foreach(string loss in new[]{"target","context","mouse","off","reset"}) {
    Setup();near=Enemy(8,.4f);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Point();
    if(loss=="target")near.gameObject.GetComponent<EnemyScript>().dead=true;
    if(loss=="context")GameScript.inventoryOpen=true;
    if(loss=="mouse"){Input.mousePosition=new Vector3(40,20,0);Next();}
    if(loss=="off")ControllerAimAssist.Toggle();if(loss=="reset")ControllerAimAssist.Reset();
-   GUI.Recorded.Clear();draw.Invoke(marker,null);Check(!GUI.Recorded.Any(d=>d.Color.g==1),"Applied outline clears on "+loss);
+   GUI.Recorded.Clear();draw.Invoke(marker,null);Check(!GUI.Recorded.Any(d=>d.Color.g==1&&d.Color.r==1),"Applied outline clears on "+loss);
    if(loss=="mouse")Check(GUI.Recorded.Count==1,"Mouse ownership retains enabled square but hides cone and applied outline");
   }
   Setup();near=Enemy(8,.4f);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Point();Time.unscaledTime+=.6f;Point();Time.unscaledTime+=.2f;
-  GUI.Recorded.Clear();draw.Invoke(marker,null);Check(GUI.Recorded.Any(d=>d.Color.g==1),"Continuing applied staff resolutions refresh outline lifetime");
+  GUI.Recorded.Clear();draw.Invoke(marker,null);Check(GUI.Recorded.Any(d=>d.Color.g==1&&d.Color.r==1),"Continuing applied staff resolutions refresh outline lifetime");
   int visualSearches=Physics.Searches;draw.Invoke(marker,null);Check(Physics.Searches==visualSearches,"Applied hitbox drawing validates retained target without enemy scanning");
+  Setup();GunPrefab(30);near=Enemy(8,0);near.gameObject.AddComponent<Rigidbody>().velocity=new Vector3(0,6,0);Physics.Candidates=new[]{near};
+  var muzzle=new GameObject("muzzle");muzzle.transform.position=new Vector3(1,0,0);local.shot=muzzle.transform;ControllerAimAssist.BeginAttack(new AttackToken{Player=local});assisted=Point();
+  Check(Math.Abs(assisted.x-8)<.0001&&Math.Abs(assisted.y-.7f)<.0001,"Ordinary native gun leads using actual prefab speed, target velocity and muzzle distance");
+  ControllerAim.TryWorldPoint(out visual);Check(visual.y==0&&Math.Abs(visual.x-14)<.0001,"Partial lead leaves visible crosshair unchanged at full radius");
+  GUI.Recorded.Clear();draw.Invoke(marker,null);Check(GUI.Recorded.Any(d=>d.Color.r==0&&d.Color.g==1&&d.Color.b==1&&Math.Abs(d.Rect.x-6)<.0001&&Math.Abs(d.Rect.y-(Screen.height-.7f-2))<.0001),"Cyan marker shows final clamped lead point in screen coordinates");
+  GameScript.equippedIDs[0]=405;assisted=Point();Check(assisted.x==8&&assisted.y==0,"Mid-windup equipment mismatch falls back to zero lead rather than old weapon speed");
+  Setup();near=Enemy(8,0);near.gameObject.AddComponent<Rigidbody>().velocity=new Vector3(0,6,0);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Check(Point().y==0,"Missing projectile speed retains normal center assistance");
+  Setup();GunPrefab(30);near=Enemy(8,0);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Check(Point().y==0,"Missing target velocity retains center assistance on first observation");
+  near.transform.position=new Vector3(8,.2f,0);Time.unscaledTime+=.1f;assisted=Point();Check(assisted.y>.2f,"Own-hitbox center samples provide lead for transform-driven segments without Rigidbody velocity");
+  Setup();GunPrefab(30);near=Enemy(8,0);near.gameObject.AddComponent<Rigidbody>().velocity=new Vector3(0,100,0);Physics.Candidates=new[]{near};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});assisted=Point();
+  Check(Math.Abs(Math.Atan2(assisted.y,assisted.x)*180/Math.PI-8)<.0001,"Large partial prediction clamps final aim to unchanged eight-degree player cone");
+  Setup();var liveStaff=SpawnStaff(10,new Vector3(20,0,0));ControllerAimAssist.Restore(null);local.attacking=false;int beforeStaff=Physics.Searches;
+  assisted=StaffTick(liveStaff);Check(Math.Abs(assisted.x-50)<.0001&&assisted.y==0,"Staff without target aims forward from its own position beyond fixed fourteen-unit cursor");
+  Check(Physics.Searches==beforeStaff+1&&ControllerAimAssist.Current==null,"Only actual tracking tick searches and restores outer scope after attack release");
+  near=Enemy(8,.2f);Physics.Candidates=new[]{near};assisted=StaffTick(liveStaff);Check(ControllerAimAssist.Retained(liveStaff).Target==near&&assisted.x==8,"Existing released staff acquires target on later tracking tick");
+  near.transform.position=new Vector3(8,5,0);assisted=StaffTick(liveStaff);Check(assisted.x==50&&ControllerAimAssist.Retained(liveStaff).Target==null,"Staff target leaving cone falls back to forward direction");
+  near.transform.position=new Vector3(8,.2f,0);StaffTick(liveStaff);Check(ControllerAimAssist.Retained(liveStaff).Target==near,"Same staff reacquires returning target without another attack press");
+  var better=Enemy(4,0);Physics.Candidates=new[]{near,better};StaffTick(liveStaff);Check(ControllerAimAssist.Retained(liveStaff).Target==better,"Active staff switches to newly better hybrid target each tick");
+  ControllerAimAssist.Toggle();beforeStaff=Physics.Searches;assisted=StaffTick(liveStaff);Check(assisted.x==50&&Physics.Searches==beforeStaff,"Assist-off staff keeps directional fallback while stopping all target acquisition");
+  ControllerAimAssist.Toggle();StaffTick(liveStaff);Check(ControllerAimAssist.Retained(liveStaff).Target==better,"Re-enabling lets same staff target on next tracking tick");
+  Setup();liveStaff=SpawnStaff(10,new Vector3(2,0,0));near=Enemy(4,0);near.gameObject.AddComponent<Rigidbody>().velocity=new Vector3(0,4,0);Physics.Candidates=new[]{near};GameScript.equippedIDs[0]=999;
+  assisted=StaffTick(liveStaff);Check(Math.Abs(assisted.y-.4f)<.0001,"Staff lead uses its own current position and speed despite changed equipped weapon");
+  liveStaff.isSwathe=true;assisted=StaffTick(liveStaff);Check(Math.Abs(assisted.y-.2f)<.0001,"Staff Swathe native plus-ten speed participates in lead prediction");
+  var independent=SpawnStaff(30,new Vector3(3,0,0));var another=Enemy(6,0);Physics.Candidates=new[]{another};StaffTick(independent);
+  Check(ControllerAimAssist.Retained(liveStaff).Target==near&&ControllerAimAssist.Retained(independent).Target==another,"Two active staff projectiles retain independent per-tick target states");
+  Input.mousePosition=new Vector3(70,60,0);Next();assisted=StaffTick(liveStaff);Check(assisted.x==70&&assisted.y==60,"Mouse takeover returns actual native mouse target for controlled staff");
+  Setup();liveStaff=SpawnStaff(10,Vector3.zero);near=Enemy(8,0);Physics.Candidates=new[]{near};liveStaff.SetController(false);beforeStaff=Physics.Searches;assisted=StaffTick(liveStaff);
+  Check(assisted.x==Input.mousePosition.x&&Physics.Searches==beforeStaff,"Remote/noncontrolling staff never steers or scans with local controller");
+  var uncorrelated=new GameObject("unknown-staff").AddComponent<Projectile>();beforeStaff=Physics.Searches;StaffTick(uncorrelated);Check(ControllerAimAssist.Retained(uncorrelated)==null&&Physics.Searches==beforeStaff,"Uncorrelated staff RPC cannot borrow latest local activation");
+  object[] remoteSpawn={local,new NetworkPlayer{Id=1},null};Private(typeof(AimAssistStaffSpawnPatch),"Prefix").Invoke(null,remoteSpawn);AimAssistStaffSpawnPatch.Capture(uncorrelated.gameObject);Private(typeof(AimAssistStaffSpawnPatch),"Finalizer").Invoke(null,new[]{null,remoteSpawn[2]});Check(ControllerAimAssist.Retained(uncorrelated)==null,"Spawn correlation rejects different controlling NetworkPlayer even on local PlayerScript");
+  Setup();liveStaff=SpawnStaff(10,Vector3.zero);near=Enemy(8,0);Physics.Candidates=new[]{near};GameScript.inventoryOpen=true;beforeStaff=Physics.Searches;StaffTick(liveStaff);Check(Physics.Searches==beforeStaff,"Menu/freeze gameplay guard blocks staff target scanning");
+  GameScript.inventoryOpen=false;Next();StaffTick(liveStaff);Check(ControllerAimAssist.Retained(liveStaff).Target==near,"Returning to gameplay permits retained staff targeting next tick");
+  Setup();Shader.Available.Clear();Shader.Available["Sprites/Default"]=new Shader{name="Sprites/Default",Color=true};GameObject nativeRoot;var nativeGlyph=NativeGlyph(out nativeRoot);var originalMaterial=nativeGlyph.GetComponent<MeshRenderer>().sharedMaterial;var originalTexture=originalMaterial.mainTexture;
+  liveStaff=SpawnStaff(10,new Vector3(20,0,0));local.attacking=false;GameScript.equippedIDs[0]=999;var staffPoint=StaffTick(liveStaff);var red=RedGlyphs().Single();var redMaterial=red.GetComponent<MeshRenderer>().sharedMaterial;
+  Check(red.transform.position.x==staffPoint.x&&red.transform.position.y==staffPoint.y&&Math.Abs(red.transform.position.z+.43286f)<.00001,"Red staff glyph uses exact returned fallback world point with only native render-depth offset");
+  Check(!ReferenceEquals(redMaterial,originalMaterial)&&ReferenceEquals(redMaterial.mainTexture,originalTexture)&&redMaterial.Tint.r==1&&redMaterial.Tint.g==0,"Red glyph owns tinted material while sharing exact native crosshair texture");
+  Check(ReferenceEquals(nativeGlyph.GetComponent<MeshRenderer>().sharedMaterial,originalMaterial)&&originalMaterial.Tint.r==0,"Native direction crosshair material is untouched");
+  Check(red.GetComponent<ActionCursor>()==null&&red.GetComponentsInChildren<MeshRenderer>(true).Length==1&&red.GetComponent<MeshFilter>().sharedMesh==nativeGlyph.GetComponent<MeshFilter>().sharedMesh&&red.GetComponent<Animation>()!=null,"Only native mesh glyph and rotation animation are copied, excluding position updater and giant guides");
+  UnityEngine.Object.Destroy(red);StaffTick(liveStaff);red=RedGlyphs().Single();Check(!redMaterial&&red&&ReferenceEquals(red.GetComponent<MeshRenderer>().sharedMaterial.mainTexture,originalTexture),"Destroyed glyph is rebuilt safely on next native tick and abandoned owned material is disposed");
+  var secondStaff=SpawnStaff(10,new Vector3(30,0,0));StaffTick(secondStaff);Check(RedGlyphs().Length==2&&RedGlyphs().Any(g=>g.transform.position.x==50)&&RedGlyphs().Any(g=>g.transform.position.x==60),"Two released staff projectiles keep independent exact fallback targets after weapon switch");
+  var unknownStaff=new GameObject("uncorrelated").AddComponent<Projectile>();StaffTick(unknownStaff);Check(RedGlyphs().All(g=>g.activeInHierarchy),"Uncorrelated remote tracking does not hide valid local staff target glyphs");
+  near=Enemy(8,0);near.gameObject.AddComponent<Rigidbody>().velocity=new Vector3(0,4,0);Physics.Candidates=new[]{near};staffPoint=StaffTick(liveStaff);Check(red.transform.position.x==staffPoint.x&&Math.Abs(red.transform.position.y-staffPoint.y)<.00001&&red.transform.position.y>0,"Red glyph follows actual final predicted and clamped staff steering point");
+  GUI.Recorded.Clear();int glyphSearches=Physics.Searches;draw.Invoke(marker,null);Check(!GUI.Recorded.Any(d=>d.Color.r==0&&d.Color.g==1&&d.Color.b==1)&&RedGlyphs().Any(g=>g.activeInHierarchy),"Staff red target glyph replaces cyan dot while leaving native direction indicator separate");
+  near.transform.position=new Vector3(8,.2f,0);draw.Invoke(marker,null);Check(Math.Abs(red.transform.position.y-staffPoint.y)<.00001&&Physics.Searches==glyphSearches,"Rendering retains last native-tick target without enemy tracking or searches");
+  liveStaff.SetController(false);draw.Invoke(marker,null);Check(!red.activeInHierarchy&&RedGlyphs().Any(g=>g!=red&&g.activeInHierarchy),"Single projectile ownership loss hides only its glyph");liveStaff.SetController(true);StaffTick(liveStaff);
+  GameScript.inventoryOpen=true;draw.Invoke(marker,null);Check(RedGlyphs().All(g=>!g.activeInHierarchy),"Inventory context hides all staff target glyphs");GameScript.inventoryOpen=false;Next();StaffTick(liveStaff);
+  foreach(string gate in new[]{"dead","frozen","player ownership"}) {
+   if(gate=="dead")GameScript.dead=true;if(gate=="frozen")GadgetCore.API.GadgetCoreAPI.Frozen=true;if(gate=="player ownership")local.GetComponent<NetworkView>().isMine=false;
+   draw.Invoke(marker,null);Check(RedGlyphs().All(g=>!g.activeInHierarchy),"Unsafe staff target display hides on "+gate);
+   GameScript.dead=false;GadgetCore.API.GadgetCoreAPI.Frozen=false;local.GetComponent<NetworkView>().isMine=true;StaffTick(liveStaff);
+  }
+  Input.mousePosition=new Vector3(30,30,0);Next();draw.Invoke(marker,null);Check(RedGlyphs().All(g=>!g.activeInHierarchy),"Mouse takeover hides staff target glyphs");
+  ControllerAim.Configure(()=>pad);Next();StaffTick(liveStaff);var ownedMaterial=red.GetComponent<MeshRenderer>().sharedMaterial;UnityEngine.Object.Destroy(liveStaff.gameObject);draw.Invoke(marker,null);Check(!red&&!ownedMaterial&&originalTexture,"Destroyed projectile destroys owned glyph/material but keeps shared native texture");
+  Time.unscaledTime+=.71f;draw.Invoke(marker,null);Check(RedGlyphs().Length==0,"Stale staff glyph expires after 0.7 seconds without another native steering tick");
+  Setup();liveStaff=SpawnStaff(10,Vector3.zero);StaffTick(liveStaff);red=RedGlyphs().Single();ownedMaterial=red.GetComponent<MeshRenderer>().sharedMaterial;ControllerAimAssist.Toggle();Check(!red&&!ownedMaterial&&RedGlyphs().Length==0,"Disabling assistance immediately clears owned staff glyphs and materials");
+  ControllerAimAssist.Toggle();StaffTick(liveStaff);red=RedGlyphs().Single();ownedMaterial=red.GetComponent<MeshRenderer>().sharedMaterial;ControllerAimAssist.Reset();Check(!red&&!ownedMaterial,"Reset disposes owned staff target rendering resources");
+  Setup();Shader.Available.Clear();Shader.Available["Particles/Alpha Blended"]=new Shader{name="Particles/Alpha Blended",Tint=true};liveStaff=SpawnStaff(10,Vector3.zero);StaffTick(liveStaff);red=RedGlyphs().Single();Check(red.GetComponent<MeshRenderer>().sharedMaterial.Tint.r==.5f&&red.GetComponent<MeshRenderer>().sharedMaterial.Tint.a==.5f,"Verified particle shader fallback compensates its native two-times tint");
+  UnityEngine.Object.Destroy(nativeRoot);UnityEngine.Object.Destroy(nativeGlyph);GameObject replacementRoot;var replacementGlyph=NativeGlyph(out replacementRoot);StaffTick(liveStaff);red=RedGlyphs().Single();Check(ReferenceEquals(red.GetComponent<MeshRenderer>().sharedMaterial.mainTexture,replacementGlyph.GetComponent<MeshRenderer>().sharedMaterial.mainTexture),"Scene/template replacement reacquires current native glyph and rebuilds owned marker");
+  ControllerAimAssist.Reset();Shader.Available.Clear();Setup();liveStaff=SpawnStaff(10,Vector3.zero);beforeStaff=Debug.Warnings.Count;StaffTick(liveStaff);StaffTick(liveStaff);Check(RedGlyphs().Length==0&&Debug.Warnings.Count==beforeStaff+1,"Unavailable tintable shaders fail gracefully with one diagnostic warning");
+  ControllerAimAssist.Reset();ControllerAimAssist.StartSession();
+  Check(ControllerAimAssist.Enabled&&ControllerAimAssist.Current==null&&ControllerAimAssist.SearchCount==0,"Gadget startup enables assistance without acquiring a target");
+  int indicators=UnityEngine.Object.FindObjectsOfType<GameObject>().Count(g=>g.name=="ControllerSupport.AimAssistIndicator");ControllerAimAssist.StartSession();
+  Check(indicators==1&&UnityEngine.Object.FindObjectsOfType<GameObject>().Count(g=>g.name=="ControllerSupport.AimAssistIndicator")==1,"Session initialization creates only one enabled indicator");
+  ControllerAimAssist.Toggle();ControllerAimAssist.Configure();Check(!ControllerAimAssist.Enabled,"L3 can disable default-on assistance and adapter refresh preserves that choice");
+  ControllerAimAssist.Reset();ControllerAimAssist.StartSession();Check(ControllerAimAssist.Enabled,"Next gadget session starts enabled again");ControllerAimAssist.Reset();
   Console.WriteLine("Aim assist integration: "+checks+" checks passed.");
  }
 }

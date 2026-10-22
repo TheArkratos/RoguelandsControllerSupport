@@ -24,7 +24,7 @@ namespace ControllerSupport
         internal static void SetContext(GameScript current, Collider target,
             bool controllerActive, BindingConfig bindings, string primary,
             string secondary, bool canTransfer, bool canDrop, Bounds? badgeBounds = null,
-            string cancelLabel = null, Func<Bounds?> badgeProvider = null)
+            string cancelLabel = null, Func<Bounds?> badgeProvider = null, bool storagePaging = false)
         {
             game = current;
             selected = target;
@@ -36,12 +36,17 @@ namespace ControllerSupport
             if (controllerActive)
             {
                 StringBuilder text = new StringBuilder();
-                Append(text, bindings, "MenuActivate", primary);
-                Append(text, bindings, "MenuSecondary", secondary);
-                if (canTransfer) Append(text, bindings, "MenuTransfer", "Transfer");
-                if (canDrop) Append(text, bindings, "MenuDrop", "Drop");
+                Append(text, bindings, "MenuActivate", primary, storagePaging);
+                Append(text, bindings, "MenuSecondary", secondary, storagePaging);
+                if (canTransfer) Append(text, bindings, "MenuTransfer", "Transfer", storagePaging);
+                if (canDrop) Append(text, bindings, "MenuDrop", "Drop", storagePaging);
+                if (storagePaging)
+                {
+                    if (text.Length > 0) text.Append("   ·   ");
+                    text.Append("LB Previous page   ·   RB Next page");
+                }
                 Item held = HeldItem();
-                Append(text, bindings, "MenuCancel", cancelLabel ?? (held != null && held.id > 0 && held.q > 0 ? "Return" : "Close"));
+                Append(text, bindings, "MenuCancel", cancelLabel ?? (held != null && held.id > 0 && held.q > 0 ? "Return" : "Close"), storagePaging);
                 hints = text.ToString();
             }
             EnsureRunner();
@@ -69,9 +74,10 @@ namespace ControllerSupport
         }
 
         private static void Append(StringBuilder text, BindingConfig bindings,
-            string action, string label)
+            string action, string label, bool storagePaging = false)
         {
             if (string.IsNullOrEmpty(label) || bindings[action] == "Unbound") return;
+            if (storagePaging && (bindings[action] == "Joystick1Button4" || bindings[action] == "Joystick1Button5")) return;
             if (text.Length > 0) text.Append("   ·   ");
             text.Append(bindings.Label(action)).Append(" ").Append(label);
         }

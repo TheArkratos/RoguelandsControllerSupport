@@ -170,6 +170,7 @@ namespace ControllerSupport
         [HarmonyPrefix]
         internal static void Prefix(GameScript __instance)
         {
+            ControllerDialogueInput.Prepare(__instance);
             ControllerGameplayInput.SetGameUpdateContext(__instance);
             ControllerMenuSelection.Prepare(__instance);
             ControllerGameplayActions.Prepare(__instance);

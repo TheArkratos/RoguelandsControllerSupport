@@ -10,7 +10,7 @@ namespace ControllerSupport
     {
         internal static readonly string[] Actions = {
             "Move", "AimTargetOrMenuSelection", "Jump", "PrimaryAction", "Dash",
-            "CloseAim", "CombatMode", "Interact", "Inventory", "Pause",
+            "CombatMode", "Interact", "Inventory", "Pause",
             "MenuActivate", "MenuSecondary", "MenuTransfer", "MenuDrop", "MenuCancel",
             "AimAssist", "Hotkey1", "Hotkey2", "Hotkey3", "Hotkey4", "Hotkey5", "Hotkey6"
         };
@@ -20,7 +20,7 @@ namespace ControllerSupport
         };
 
         private static readonly string[] GameplayActions = {
-            "Jump", "PrimaryAction", "Dash", "CloseAim", "CombatMode", "Interact", "Inventory", "Pause",
+            "Jump", "PrimaryAction", "Dash", "CombatMode", "Interact", "Inventory", "Pause",
             "AimAssist", "Hotkey1", "Hotkey2", "Hotkey3", "Hotkey4", "Hotkey5", "Hotkey6"
         };
 
@@ -39,7 +39,6 @@ namespace ControllerSupport
             "Jump = LeftTrigger\n" +
             "PrimaryAction = RightTrigger\n" +
             "Dash = Joystick1Button4\n" +
-            "CloseAim = Joystick1Button10\n" +
             "CombatMode = Joystick1Button3\n" +
             "Interact = Joystick1Button2\n" +
             "Inventory = Joystick1Button6\n" +
@@ -159,6 +158,10 @@ namespace ControllerSupport
                 int equals = line.IndexOf('=');
                 if (equals <= 0) throw new FormatException("Line " + (i + 1) + ": expected Action = Input.");
                 string action = line.Substring(0, equals).Trim();
+                // Obsolete half-distance aiming is intentionally ignored, even
+                // with an invalid token. Old files keep their bytes, and this
+                // retired action neither reserves a button nor causes conflicts.
+                if (action.Equals("CloseAim", StringComparison.OrdinalIgnoreCase)) continue;
                 string token = line.Substring(equals + 1).Trim();
                 if (Array.Find(Actions, name => name.Equals(action, StringComparison.OrdinalIgnoreCase)) == null)
                     throw new FormatException("Line " + (i + 1) + ": unknown action '" + action + "'.");

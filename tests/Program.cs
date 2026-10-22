@@ -25,7 +25,7 @@ internal static class Program
         Equal("RightTrigger", defaults["PrimaryAction"]);
         Equal("Joystick1Button4", defaults["Dash"]);
         Equal("Joystick1Button3", defaults["CombatMode"]);
-        Equal("Joystick1Button10", defaults["CloseAim"]);
+        CheckObsoleteCloseAim(defaults);
         Equal("Joystick1Button6", defaults["Inventory"]);
         Equal("Joystick1Button7", defaults["Pause"]);
         Equal("Joystick1Button2", defaults["Interact"]);
@@ -179,7 +179,6 @@ internal static class Program
         Equal("LB", defaults.Label("Dash"));
         Equal("View", defaults.Label("Inventory"));
         Equal("Menu", defaults.Label("Pause"));
-        Equal("R3", defaults.Label("CloseAim"));
         Equal("LT", defaults.Label("Jump"));
         Equal("RT", defaults.Label("PrimaryAction"));
         string legacy = BindingConfig.DefaultText
@@ -268,6 +267,38 @@ internal static class Program
         input.Clear();
         False(triggers.Held("MenuActivate", input));
         False(triggers.Pressed("MenuActivate", input));
+    }
+
+    private static void CheckObsoleteCloseAim(BindingConfig defaults)
+    {
+        False(Array.Exists(BindingConfig.Actions, action => action == "CloseAim"));
+        foreach (string action in BindingConfig.Actions)
+            False(defaults[action] == "Joystick1Button10");
+        False(BindingConfig.DefaultText.Contains("CloseAim"));
+        foreach (string token in new[] { "Joystick1Button10", "Joystick1Button4", "InvalidOldToken", "Joystick1Button999", "" })
+        {
+            string legacy = BindingConfig.DefaultText + "CloseAim = " + token + "\n";
+            Equal("Joystick1Button4", BindingConfig.Parse(legacy.Split('\n'))["Dash"]);
+            BindingConfig rebound = BindingConfig.Parse(legacy.Replace("Dash = Joystick1Button4", "Dash = Joystick1Button10").Split('\n'));
+            Equal("Joystick1Button10", rebound["Dash"]);
+            Equal("R3", rebound.Label("Dash"));
+        }
+        Equal("Joystick1Button4", BindingConfig.Parse((BindingConfig.DefaultText + "closeaim = BadToken\nCloseAim = Joystick1Button4\n").Split('\n'))["Dash"]);
+        Reject(BindingConfig.DefaultText + "CloseAims = Joystick1Button10\n", "only exact obsolete key is ignored");
+        Reject(BindingConfig.DefaultText.Replace("Dash = Joystick1Button4", "Dash = Joystick1Button10")
+            .Replace("CombatMode = Joystick1Button3", "CombatMode = Joystick1Button10")
+            + "CloseAim = BadToken\n", "active collisions still reject with obsolete key present");
+        string file = Path.Combine(Path.GetTempPath(), "ControllerSupportBindings-obsolete-" + Guid.NewGuid().ToString("N") + ".ini");
+        try
+        {
+            string legacy = BindingConfig.DefaultText.Replace("Dash = Joystick1Button4", "Dash = Joystick1Button10")
+                + "CloseAim = InvalidOldToken\n";
+            byte[] original = System.Text.Encoding.UTF8.GetBytes(legacy.Replace("\n", "\r\n"));
+            File.WriteAllBytes(file, original);
+            Equal("Joystick1Button10", BindingConfig.Load(file)["Dash"]);
+            Equal(Convert.ToBase64String(original), Convert.ToBase64String(File.ReadAllBytes(file)));
+        }
+        finally { if (File.Exists(file)) File.Delete(file); }
     }
 
     private static void CheckGameplayBindings(BindingConfig defaults)

@@ -123,7 +123,7 @@ namespace ControllerSupport
             if (!ownsAim || !MenuScript.player) return false;
             NetworkView view = MenuScript.player.GetComponent<NetworkView>();
             if (!view || !view.isMine) return false;
-            float distance = ControllerGameplayInput.CloseAimHeld() ? radius * 0.5f : radius;
+            float distance = radius;
             Vector3 player = MenuScript.player.transform.position;
             point = new Vector3(player.x + (float)Math.Cos(renderedAngle) * distance,
                 player.y + (float)Math.Sin(renderedAngle) * distance, 0f);

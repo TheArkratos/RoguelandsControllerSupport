@@ -34,9 +34,10 @@ namespace ControllerSupport
         {
             probe = new InputProbe(Logger, bindings ?? BindingConfig.SafeDefaults());
             ControllerGameplayInput.Configure(probe.PollState, bindings ?? BindingConfig.SafeDefaults());
+            ControllerDialogueInput.Configure(probe.PollState, bindings ?? BindingConfig.SafeDefaults());
             ControllerAim.Configure(probe.PollState);
             ControllerAimAssist.Trace = message => Logger.Log(message);
-            ControllerAimAssist.Configure();
+            ControllerAimAssist.StartSession();
             ControllerGameplayActions.Configure(probe.PollState,
                 bindings ?? BindingConfig.SafeDefaults(), ControllerAimAssist.Toggle);
             ControllerExploration.Configure(probe.PollState);
@@ -58,6 +59,7 @@ namespace ControllerSupport
         protected override void Unload()
         {
             ControllerGameplayInput.Reset();
+            ControllerDialogueInput.Reset();
             ControllerGameplayActions.Reset();
             ControllerAimAssist.Reset();
             ControllerAim.Reset();

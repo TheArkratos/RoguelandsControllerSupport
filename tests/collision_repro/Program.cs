@@ -8,7 +8,7 @@ internal static class Program
     {
         CheckVanillaConflict(0, "Jump", false);       // A is vanilla Jump, not configured.
         CheckVanillaConflict(4, "Dash Left", false);  // LB alone must not dash.
-        CheckVanillaConflict(5, "Dash Right", false); // RB is configured for close aim.
+        CheckVanillaConflict(5, "Dash Right", false); // Unassigned RB must not synthesize dash.
         CheckVanillaConflict(3, "Up", false);         // Y toggles mode, not interact.
         CheckDelayedVanillaConflict(4, "Dash Left");
         CheckDelayedVanillaConflict(5, "Dash Right");
@@ -126,17 +126,25 @@ internal static class Program
         Input.Down.Clear();
         GameScript.inventoryOpen = false;
 
-        JoystickInputState closeAimInput = Fresh();
+        JoystickInputState r3Input = Fresh();
         GameScript.combatMode = true;
-        closeAimInput.Apply(new RawJoystickEvent { Type = 1, Number = 10, Value = 1 });
+        r3Input.Apply(new RawJoystickEvent { Type = 1, Number = 10, Value = 1 });
         Time.frameCount++;
-        if (!ControllerGameplayInput.CloseAimHeld())
-            throw new Exception("R3 did not request half-distance aim.");
-        closeAimInput.Apply(new RawJoystickEvent { Type = 1, Number = 10, Value = 0 });
-        closeAimInput.Apply(new RawJoystickEvent { Type = 1, Number = 5, Value = 1 });
-        Time.frameCount++;
-        if (ControllerGameplayInput.CloseAimHeld())
-            throw new Exception("RB still requested half-distance aim.");
+        BindingConfig r3Bindings = BindingConfig.Parse(BindingConfig.DefaultText.Split('\n'));
+        foreach (string action in BindingConfig.Actions)
+            if (action != "Move" && action != "AimTargetOrMenuSelection" &&
+                (r3Bindings.Held(action, r3Input) ||
+                 r3Bindings.Pressed(action, r3Input)))
+                throw new Exception("Unassigned R3 synthesized action " + action + ".");
+        if (ControllerGameplayInput.PlayerButtonDown("Jump") ||
+            ControllerGameplayInput.PlayerButtonDown("Dash Left") ||
+            ControllerGameplayInput.PlayerButtonDown("Dash Right") ||
+            ControllerGameplayInput.GameButtonDown("CombatMode") ||
+            ControllerGameplayInput.GameButtonDown("Inventory") ||
+            ControllerGameplayInput.GamePausePressed() ||
+            ControllerGameplayInput.ExplorationPrimaryHeld() ||
+            ControllerGameplayInput.ExplorationPrimaryPressed())
+            throw new Exception("Unassigned R3 synthesized gameplay input.");
         GameScript.combatMode = false;
 
         JoystickInputState input = Fresh();

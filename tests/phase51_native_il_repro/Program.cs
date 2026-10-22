@@ -87,7 +87,7 @@ internal static class Program
             MethodInfo target=Iterator(projectile,name); var original=Read(target); var changed=Invoke("AimAssistIL","Replace",original,target);
             Check(original.Count(i=>Call(i,"UnityEngine.Input","get_mousePosition"))==1,name+" exact native mouse pattern");
             Check(!changed.Any(i=>Call(i,"UnityEngine.Input","get_mousePosition")),name+" native mouse is adapted");
-            Check(changed.Count(i=>Call(i,"ControllerSupport.ControllerAim","AttackMousePosition"))==1,name+" attack-owned aim is sampled");
+            Check(changed.Count(i=>Call(i,"ControllerSupport.ControllerAimAssist","StaffMousePosition"))==1,name+" projectile-owned tracking adapter is sampled");
             Check(changed.Count==original.Count,name+" preserves native lifetime and timing instructions");
         }
         MethodInfo staff=player.GetMethod("Staff",All); var staffNative=Read(staff); var staffPatched=Invoke("AimAssistStaffSpawnPatch","Transpiler",staffNative);

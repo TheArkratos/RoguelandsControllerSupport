@@ -40,7 +40,7 @@ namespace ControllerSupport
         internal static string LastReason, Primary, Secondary;
         internal static bool Transfer, Held, Controller;
         internal static void SetContext(GameScript game, UnityEngine.Collider selected, bool controller,
-            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null) { Primary=primary; Secondary=secondary; Transfer=transfer; Held=held; Controller=controller; }
+            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false) { Primary=primary; Secondary=secondary; Transfer=transfer; Held=held; Controller=controller; }
         internal static void Reject(string reason) { LastReason=reason; }
         internal static void Reset() { LastReason=null; }
     }

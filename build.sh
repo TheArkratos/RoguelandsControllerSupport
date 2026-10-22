@@ -35,10 +35,13 @@ dotnet "$csc_dll" \
     "$project_dir/src/RawLinuxJoystickProbe.cs" \
     "$project_dir/src/InputProbe.cs" \
     "$project_dir/src/ControllerGameplayInput.cs" \
+    "$project_dir/src/ControllerDialogueInput.cs" \
     "$project_dir/src/ControllerGameplayActions.cs" \
     "$project_dir/src/GameplayInputPatches.cs" \
     "$project_dir/src/ControllerAim.cs" \
     "$project_dir/src/AimAssistGeometry.cs" \
+    "$project_dir/src/AimLeadPrediction.cs" \
+    "$project_dir/src/StaffTargetCrosshair.cs" \
     "$project_dir/src/ControllerAimAssist.cs" \
     "$project_dir/src/AimAssistPatches.cs" \
     "$project_dir/src/ExplorationTargetSelector.cs" \

@@ -4,6 +4,8 @@ using System.Collections.Generic;
 
 namespace UnityEngine
 {
+    public static class Application { public static int loadedLevel; }
+    public class NetworkView : Object { public bool isMine = true; }
     public class Object
     {
         public static implicit operator bool(Object value) { return value != null; }
@@ -18,8 +20,9 @@ namespace UnityEngine
         public Transform transform;
         public Collider collider;
         public Renderer renderer;
+        public NetworkView view = new NetworkView();
         public GameObject(string name = "") { this.name = name; transform = new Transform(this); }
-        public T GetComponent<T>() where T : class { return collider as T ?? renderer as T; }
+        public T GetComponent<T>() where T : class { return collider as T ?? renderer as T ?? view as T; }
     }
     public class Transform : Object
     {
@@ -97,8 +100,10 @@ namespace UnityEngine
     }
 }
 
+public static class MenuScript { public static UnityEngine.GameObject player = new UnityEngine.GameObject("player"); }
 public class GameScript : UnityEngine.Object
 {
+    public void SelectPage(int page) { if (page <= storageLevel) currentStoragePage = page; }
     public static bool inventoryOpen = true, pausing, dead, buildMode;
     public UnityEngine.GameObject inventoryMain, inventoryBar, menuStorage, holdingItemObj,
         holdingItemIcon;

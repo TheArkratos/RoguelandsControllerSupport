@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/AimLeadPrediction.cs" Link="AimLeadPrediction.cs" />
+    <Compile Include="../aim_assist_geometry_repro/Stubs.cs" Link="Stubs.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

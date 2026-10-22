@@ -23,3 +23,14 @@ Unity RPCs or prove networking timing. Uncorrelated client-received staff
 projectiles retain normal aim, rather than borrowing another activation. Native
 registered custom weapon callbacks and arbitrary custom chip callbacks require
 separate adapters; native weapon/chip paths are covered here.
+
+The staff/lead follow-up also checks correlated local spawn ownership, independent
+active staff ticks after release, target switching/loss/reacquisition, forward
+fallback beyond the visible cursor, mouse takeover, actual projectile speed and
+weapon-switch independence, partial velocity prediction and cyan cone clamping.
+Ordinary delayed attacks still retain targets; tracking staves now reselect.
+
+Red staff target glyph checks exercise the production marker module with native
+mesh/material/scene doubles: per-projectile exact steering points, owned red tint
+and original texture preservation, glyph-only cloning, scene rebuild and lifetime
+cleanup. They verify state and geometry mapping, not real shader/GPU appearance.

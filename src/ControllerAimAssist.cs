@@ -17,8 +17,15 @@ namespace ControllerSupport
             internal bool Lost;
             internal int TraceId;
             internal bool ResolveTraced, LossTraced;
+            internal PlayerScript Owner;
+            internal Projectile Staff;
+            internal int WeaponId;
+            internal float ProjectileSpeed;
         }
         private sealed class Entry { internal WeakReference Owner; internal Attack Attack; }
+        private sealed class Motion { internal WeakReference Target; internal Vector2 Center,Velocity; internal float Time; }
+        private static readonly Dictionary<int,Motion> motion = new Dictionary<int,Motion>();
+        internal static float VelocitySmoothingSeconds = .1f;
         private static readonly List<Entry> tokens = new List<Entry>();
         private static readonly Type[] Segmented = {
             typeof(EnemyScript).Assembly.GetType("WormScript"), typeof(EnemyScript).Assembly.GetType("SliverScript"),
@@ -30,6 +37,7 @@ namespace ControllerSupport
         private static GameObject indicator;
         private static Attack appliedVisual;
         private static float appliedUntil;
+        private static Vector3 appliedPoint;
         internal const float AppliedHighlightSeconds = .7f;
         // Tuning: world-distance penalty per unit of actual hitbox/centerline gap.
         // Zero restores distance-only ranking; higher values favor the aim axis.
@@ -53,11 +61,18 @@ namespace ControllerSupport
             if(!attack.LossTraced) { attack.LossTraced=true; Log("attack="+attack.TraceId+" lost="+reason); }
         }
         internal static void Configure() { ControllerAim.AttackResolver = Resolve; ControllerAim.AttackOwnershipLost = LoseOwnership; }
+        // Apply the default only when the gadget starts, never while refreshing
+        // bindings/aim adapters or after a player's L3 choice during the session.
+        internal static void StartSession()
+        {
+            Configure();
+            if(!Enabled) Toggle();
+        }
         private static void LoseOwnership() { if(current!=null) Lost(current,"controller ownership"); }
         internal static void Toggle()
         {
             Configure(); Enabled=!Enabled;
-            if(!Enabled) ClearAppliedVisual();
+            if(!Enabled) { ClearAppliedVisual(); StaffTargetCrosshair.Clear(); }
             Log("toggle enabled="+Enabled);
             if(!Enabled) Invalidate();
             if(Enabled && !indicator)
@@ -70,7 +85,9 @@ namespace ControllerSupport
         internal static void Reset()
         {
             Enabled=false; current=null; tokens.Clear(); SearchCount=0;
+            motion.Clear();
             ClearAppliedVisual();
+            StaffTargetCrosshair.Clear();
             Trace=null; nextTraceId=0;
             ControllerAim.AttackResolver=null; ControllerAim.AttackOwnershipLost=null;
             if(indicator) UnityEngine.Object.Destroy(indicator); indicator=null;
@@ -128,7 +145,65 @@ namespace ControllerSupport
             bool local=Local(player);
             Log("BeginAttack iterator="+(iterator==null?"null":iterator.GetType().FullName)+" player="+(player?player.gameObject.name:"none")+" local="+local+" enabled="+Enabled);
             Attack attack=local ? Acquire() : null;
+            if(attack!=null)
+            {
+                attack.Owner=player;
+                attack.WeaponId=GameScript.equippedIDs[0];
+                attack.ProjectileSpeed=NativeGunSpeed(attack.WeaponId);
+            }
             Retain(iterator,attack); current=attack;
+        }
+        // Native regular guns use this exact resource route. Other weapon/chip
+        // callbacks may have different projectiles, so unknown speed means no lead.
+        private static float NativeGunSpeed(int id)
+        {
+            if(id<400 || id>=450 || id==428) return 0;
+            GameObject prefab=Resources.Load("proj/shot"+id) as GameObject;
+            Projectile projectile=prefab ? prefab.GetComponent<Projectile>() : null;
+            if(!projectile || projectile.isStaff || projectile.special!=0 || projectile.onlyHorizontal || projectile.onlyVertical || projectile.isFlame || projectile.isPerceval || projectile.treant || projectile.moloch || projectile.tyrannog) return 0;
+            return projectile.speed;
+        }
+        internal static void CaptureStaff(Projectile projectile,PlayerScript owner)
+        {
+            if(!projectile || !Local(owner)) return;
+            Retain(projectile,new Attack { Staff=projectile,Owner=owner,TraceId=++nextTraceId });
+        }
+        internal static bool StaffDisplayOwned(Projectile projectile)
+        {
+            Attack token=Retained(projectile);
+            FieldInfo controller=typeof(Projectile).GetField("isController",BindingFlags.Instance|BindingFlags.NonPublic);
+            return projectile && token!=null && Local(token.Owner) && controller!=null && (bool)controller.GetValue(projectile);
+        }
+        private static Vector2 TargetVelocity(Collider target)
+        {
+            int id=target.GetInstanceID(); float now=Time.time;
+            Vector2 center=target.bounds.center; Motion sample;
+            Rigidbody body=target.attachedRigidbody;
+            bool physical=body && !body.isKinematic && body.transform==target.transform;
+            if(!motion.TryGetValue(id,out sample) || !ReferenceEquals(sample.Target.Target,target) || now-sample.Time>1f)
+            {
+                sample=new Motion { Target=new WeakReference(target),Center=center,Time=now,Velocity=physical?(Vector2)body.velocity:Vector2.zero };
+                motion[id]=sample;
+                // Bounded history, pruned only during actual attack/tracking work.
+                if(motion.Count>256)
+                {
+                    var expired=new List<int>();
+                    foreach(var pair in motion) if(pair.Value.Target.Target==null || now-pair.Value.Time>1f) expired.Add(pair.Key);
+                    foreach(int key in expired) motion.Remove(key);
+                }
+                return sample.Velocity;
+            }
+            float elapsed=now-sample.Time;
+            if(elapsed<=0) return sample.Velocity;
+            Vector2 observed=(center-sample.Center)/elapsed;
+            Vector2 raw=physical?(Vector2)body.velocity:observed;
+            // Native segmented enemies may move Transform directly despite an
+            // attached stationary Rigidbody. Follow this hitbox's observed motion.
+            if(physical && raw.sqrMagnitude<.000001f && observed.sqrMagnitude>.000001f) raw=observed;
+            float blend=VelocitySmoothingSeconds>0 ? 1-(float)Math.Exp(-elapsed/VelocitySmoothingSeconds) : 1;
+            sample.Velocity=sample.Velocity+(raw-sample.Velocity)*blend;
+            sample.Center=center; sample.Time=now;
+            return sample.Velocity;
         }
         internal static Attack Acquire()
         {
@@ -165,6 +240,7 @@ namespace ControllerSupport
                 float score=distance+CenterlineDistanceMultiplier*gap;
                 if(Trace!=null && traced++<8) Log("attack="+attack.TraceId+" candidate="+Target(candidate)+" verdict="+verdict+" playerDistance="+distance.ToString("0.###",CultureInfo.InvariantCulture)+" centerlineGap="+gap.ToString("0.###",CultureInfo.InvariantCulture)+" score="+score.ToString("0.###",CultureInfo.InvariantCulture));
                 if(!eligible) continue;
+                TargetVelocity(candidate);
                 if(score<bestScore || (score==bestScore && (gap<bestGap || (gap==bestGap && (distance<bestDistance || (distance==bestDistance && attack.Target && candidate.GetInstanceID()<attack.Target.GetInstanceID()))))))
                 { bestScore=score; bestGap=gap; bestDistance=distance; attack.Target=candidate; }
             }
@@ -296,10 +372,44 @@ namespace ControllerSupport
             Viewport(out min,out max);
             string verdict;
             if(!Eligible(attack.Target,origin,axis,min,max,out verdict)) { Lost(attack,verdict); return normal; }
-            Vector2 point=AimAssistGeometry.ClampAim(origin,axis,attack.Target.bounds.center);
+            Vector2 projectileOrigin=attack.Owner && attack.Owner.shot ? attack.Owner.shot.position : PlayerCenter();
+            float speed=attack.WeaponId==GameScript.equippedIDs[0] ? attack.ProjectileSpeed : 0;
+            Vector2 predicted=AimLeadPrediction.Predict(projectileOrigin,attack.Target.bounds.center,TargetVelocity(attack.Target),speed);
+            Vector2 point=AimAssistGeometry.ClampAim(origin,axis,predicted);
             appliedVisual=attack; appliedUntil=Time.unscaledTime+AppliedHighlightSeconds;
+            appliedPoint=new Vector3(point.x,point.y,normal.z);
             if(!attack.ResolveTraced) { attack.ResolveTraced=true; if(Trace!=null) Log("attack="+attack.TraceId+" Resolve applied target="+Target(attack.Target)+" assisted="+Point(point)+" normal="+Point(normal)+" origin="+Point(origin)+" visual="+Point(visual)); }
             return new Vector3(point.x,point.y,normal.z);
+        }
+        // Called only by native staff tracking reads, never visual/idle aiming.
+        // Each projectile keeps its own token and independently re-ranks per tick.
+        internal static Vector3 StaffMousePosition()
+        {
+            Attack staff=current; Vector3 visual;
+            if(staff==null || !staff.Staff || !Local(staff.Owner))
+            { if(staff!=null) StaffTargetCrosshair.Hide(staff.Staff); return Input.mousePosition; }
+            if(!SafeGameplay() || !ControllerAim.TryWorldPoint(out visual))
+            { if(ReferenceEquals(appliedVisual,staff)) ClearAppliedVisual(); StaffTargetCrosshair.Refresh(false); return Input.mousePosition; }
+            Vector2 origin=PlayerCenter(),axis=(Vector2)visual-origin;
+            Vector2 fallback=AimLeadPrediction.StaffFallback(staff.Staff.transform.position,axis);
+            staff.Target=null; staff.Lost=false;
+            if(Enabled)
+            {
+                Attack selection=Acquire(); staff.Target=selection.Target;
+                if(staff.Target)
+                {
+                    float speed=staff.Staff.speed+(staff.Staff.isSwathe?10f:0f);
+                    Vector2 predicted=AimLeadPrediction.Predict(staff.Staff.transform.position,staff.Target.bounds.center,TargetVelocity(staff.Target),speed);
+                    Vector2 point=AimAssistGeometry.ClampAim(origin,axis,predicted);
+                    appliedVisual=staff; appliedPoint=new Vector3(point.x,point.y,visual.z); appliedUntil=Time.unscaledTime+AppliedHighlightSeconds;
+                    StaffTargetCrosshair.Set(staff.Staff,appliedPoint);
+                    return Camera.main.WorldToScreenPoint(appliedPoint);
+                }
+            }
+            if(ReferenceEquals(appliedVisual,staff)) ClearAppliedVisual();
+            Vector3 fallbackPoint=new Vector3(fallback.x,fallback.y,visual.z);
+            if(Enabled) StaffTargetCrosshair.Set(staff.Staff,fallbackPoint);
+            return Camera.main.WorldToScreenPoint(fallbackPoint);
         }
         internal static float CursorX() { Vector3 point; return ControllerAim.TryWorldPoint(out point)?Resolve(point).x:ControllerCursor.staticX; }
         internal static float CursorY() { Vector3 point; return ControllerAim.TryWorldPoint(out point)?Resolve(point).y:ControllerCursor.staticY; }
@@ -360,8 +470,14 @@ namespace ControllerSupport
         }
         private sealed class AimAssistIndicator : MonoBehaviour
         {
+            private void LateUpdate()
+            {
+                Vector3 visual;
+                StaffTargetCrosshair.Refresh(Enabled && SafeGameplay() && ControllerAim.TryWorldPoint(out visual));
+            }
             private void OnGUI()
             {
+                LateUpdate();
                 // The marker represents the enabled setting, independently of
                 // whether the stick currently owns aim or an attack has a target.
                 if(!Enabled || !SafeGameplay() || !Camera.main) { ClearAppliedVisual(); return; }
@@ -383,6 +499,12 @@ namespace ControllerSupport
                     if(appliedVisual==null) return;
                     if(Time.unscaledTime>appliedUntil || appliedVisual.Lost || !Eligible(appliedVisual.Target,origin,axis,min,max)) { ClearAppliedVisual(); return; }
                     GUI.color=Color.yellow;Outline(appliedVisual.Target);
+                    if(!appliedVisual.Staff)
+                    {
+                        GUI.matrix=Matrix4x4.identity; GUI.color=new Color(0,1,1,1);
+                        Vector2 predicted=ScreenPoint(appliedPoint);
+                        GUI.DrawTexture(new Rect(predicted.x-2, predicted.y-2,4,4),Texture2D.whiteTexture);
+                    }
                 }
                 finally { GUI.color=old; GUI.matrix=matrix; }
             }

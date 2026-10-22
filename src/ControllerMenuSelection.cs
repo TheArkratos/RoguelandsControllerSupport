@@ -17,6 +17,9 @@ namespace ControllerSupport
         private static readonly FieldInfo StorageField = Field("storage");
         private static readonly FieldInfo[] SpecialModes = { Field("emblemForging"), Field("trashing"), Field("prisming") };
         private static readonly FieldInfo StorageLevel = Field("storageLevel");
+        private static readonly bool[] pagingArmed = new bool[2];
+        private static GameObject pagingPlayer;
+        private static int pagingScene = -1;
         private static readonly string[] Actions = { "MenuActivate", "MenuSecondary", "MenuTransfer",
             "MenuDrop", "MenuCancel", "Inventory", "Pause" };
         private static readonly bool[] armed = new bool[Actions.Length];
@@ -121,6 +124,25 @@ namespace ControllerSupport
                     pressed[i] = open && !newlyOpen && armed[i] && bindings.Pressed(Actions[i], state);
                     if (pressed[i]) armed[i] = false;
                 }
+                bool storage = StorageOpen(game);
+                bool pagingContextChanged = newlyOpen || pagingPlayer != MenuScript.player ||
+                    pagingScene != Application.loadedLevel;
+                pagingPlayer = MenuScript.player; pagingScene = Application.loadedLevel;
+                NetworkView pagingView = pagingPlayer ? pagingPlayer.GetComponent<NetworkView>() : null;
+                bool pagingAllowed = storage && state != null && state.Connected &&
+                    pagingView && pagingView.isMine && !GadgetCoreAPI.IsInputFrozen();
+                int pageDirection = 0;
+                bool bumperActive = false;
+                for (int i = 0; i < pagingArmed.Length; i++)
+                {
+                    bool held = state != null && state.ButtonHeld(4 + i);
+                    bool edge = state != null && state.ButtonPressed(4 + i);
+                    bumperActive |= held || edge;
+                    if (!pagingAllowed || pagingContextChanged) pagingArmed[i] = !held && pagingAllowed;
+                    else if (!held) pagingArmed[i] = true;
+                    if (pagingAllowed && !pagingContextChanged && pagingArmed[i] && edge)
+                    { pagingArmed[i] = false; pageDirection += i == 0 ? -1 : 1; }
+                }
                 // GadgetCore modal dialogs freeze native game UI. Disarm held
                 // controller actions as well, so dismissing a modal cannot drop,
                 // return or close using the same press.
@@ -147,6 +169,15 @@ namespace ControllerSupport
                     for (int i = 0; i < pressed.Length; i++) attempted |= pressed[i];
                     if (attempted) Reject(game, reason);
                     else InventoryFeedback.Reject(reason);
+                    return;
+                }
+                // In storage the physical bumpers own paging before any mapped
+                // item/close action. In particular RB must never drop a held stack.
+                if (storage && bumperActive)
+                {
+                    controllerOwnsSelection = true;
+                    repeating = false; repeatBlocked = true;
+                    if (pageDirection != 0) SwitchStoragePage(game, pageDirection);
                     return;
                 }
                 if (pressed[4] || pressed[5] || pressed[6])
@@ -357,7 +388,7 @@ namespace ControllerSupport
                     primary, secondary, !HasItem(held) && CanTransfer(game, navigator.SelectedSlot, target), HasItem(held),
                     renderer != null ? renderer.HeldItemBounds : null,
                     EmblemForgeContext.ModeActive(game) && !HasItem(held) ? "Cancel forging" : null,
-                    HeldBadgeProvider);
+                    HeldBadgeProvider, StorageOpen(game));
             }
             catch (Exception error) { Disable(error); }
         }
@@ -365,6 +396,24 @@ namespace ControllerSupport
         private static Bounds? CurrentHeldBadgeBounds()
         {
             return renderer != null ? renderer.HeldItemBounds : null;
+        }
+
+        private static void SwitchStoragePage(GameScript game, int direction)
+        {
+            if (StorageLevel == null) return;
+            int last = Math.Min(11, (int)StorageLevel.GetValue(game));
+            if (last < 0) return;
+            int current = InventoryItemLifecycle.CurrentPage(game);
+            for (int step = 1; step <= last + 1; step++)
+            {
+                int page = ((current + direction * step) % (last + 1) + last + 1) % (last + 1);
+                if (page == current || !navigator.StoragePageAvailable(page)) continue;
+                // Native SelectPage owns curStoragePage and starts the effective
+                // loader/SixBySixChest refresh. It does not touch the held item or
+                // its recorded pickup source, nor the selected visual cell.
+                game.SelectPage(page);
+                return;
+            }
         }
 
         private static void Describe(GameScript game, int slot, Item held, Item target,
@@ -575,6 +624,7 @@ namespace ControllerSupport
             EndNativeUpdate(); RestoreNativeHeldVisual();
             stateProvider=null; usingControllerProvider=null; bindings=null; logWarning=null;
             preparedGame=selectionGame=null; preparedFrame=-1; Array.Clear(armed,0,armed.Length);
+            Array.Clear(pagingArmed,0,pagingArmed.Length); pagingPlayer=null; pagingScene=-1;
             sampledPhysicalMouse=controllerOwnsSelection=false; auxiliaryPane=null; portalContext=forgeModeContext=false;
             hoverGame=null; hoverCollider=null; hoverControllerOwned=false;
             nativeHeldIconWidth=nativeHeldIconHeight=0f;

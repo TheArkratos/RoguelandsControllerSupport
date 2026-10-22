@@ -134,7 +134,6 @@ internal static class Program
         JoystickInputState pad = new JoystickInputState();
         pad.Connect();
         pad.Apply(new RawJoystickEvent { Type = 2, Number = 3, Value = 32767 });
-        ControllerGameplayInput.HalfRadius = false;
         ControllerAim.Configure(() => pad);
         Input.mousePosition = new Vector3(-20f, 0f, 0f);
         Time.frameCount = 1;

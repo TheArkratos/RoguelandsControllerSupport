@@ -52,6 +52,8 @@ namespace ControllerSupport
                 SelectedSlot - PageFirstSlot : -1; }
         }
         internal bool SelectedIsStoragePage { get { return SelectedStoragePage >= 0; } }
+        internal bool StoragePageAvailable(int page)
+        { return page >= 0 && page < PageSlotCount && ValidSlot(PageFirstSlot + page); }
         internal bool SelectedIsStorageUpgrade { get { return SelectedSlot == UpgradeSlot; } }
         internal bool SelectedIsPortal { get { return SelectedSlot >= PortalMenuContext.FirstSlot && SelectedSlot < PortalMenuContext.FirstSlot + PortalMenuContext.TargetCount; } }
         internal bool SelectedIsForgeToggle { get { return SelectedSlot == EmblemForgeContext.ToggleSlot; } }
@@ -95,10 +97,12 @@ namespace ControllerSupport
                 // zero is Desolate Canyon), rather than an incidental stationary
                 // inventory hover. This changes selection only; native planet
                 // choice is still performed by a fresh activation. Other panes
-                // retain their existing initial physical-hover behavior.
+                // retain their initial physical-hover behavior, falling back to
+                // the top-left backpack cell when no slot is under the mouse.
                 int portalDefault = openingPortal ? FirstPortalSlot() : -1;
                 int hovered = portalDefault >= 0 ? -1 : SlotUnderMouse(Input.mousePosition);
-                SelectedSlot = portalDefault >= 0 ? portalDefault : hovered >= 0 ? hovered : FirstValidSlot();
+                SelectedSlot = portalDefault >= 0 ? portalDefault : hovered >= 0 ? hovered :
+                    ValidSlot(GridFirstSlot) ? GridFirstSlot : FirstValidSlot();
             }
             else if (storageRoot != null || portalOpen || forgeRoot)
             {

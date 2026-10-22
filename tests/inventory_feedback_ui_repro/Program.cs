@@ -36,6 +36,15 @@ class Program {
   game.Hold(7,23);
   InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,30));Draw();
   Check(GUI.Labels[0].Contains("X Place one") && GUI.Labels[0].Contains("RB Drop") && GUI.Labels[0].Contains("B Return"),"held contextual hints");
+  InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,30),storagePaging:true);Draw();
+  Check(GUI.Labels[0].Contains("LB Previous page")&&GUI.Labels[0].Contains("RB Next page")&&!GUI.Labels[0].Contains("RB Drop"),
+      "storage bottom hint card advertises bumpers and hides conflicting drop");
+  Check(GUI.Labels[0].Contains("B Return")&&GUI.Labels[0].Contains("L3 Place"),"paging hints preserve other configured actions");
+  BindingConfig remappedDrop=BindingConfig.Parse(BindingConfig.DefaultText.Replace("MenuDrop = Joystick1Button5","MenuDrop = Joystick1Button12").Split('\n'));
+  InventoryFeedback.SetContext(game,slot,true,remappedDrop,"Place","Place one",false,true,Badge(10,30),storagePaging:true);Draw();
+  Check(GUI.Labels[0].Contains("Button 12 Drop")&&GUI.Labels[0].Contains("RB Next page"),"non-bumper remapped drop retains accurate storage hint");
+  InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,30));Draw();
+  Check(GUI.Labels[0].Contains("RB Drop")&&!GUI.Labels[0].Contains("Next page"),"leaving storage restores ordinary drop hint");
   Check(GUI.Labels.Contains("23"),"held quantity");
   Rect smallBadgeQuantity=GUI.Draws[GUI.Draws.Count-1].rect;Check(smallBadgeQuantity.x>=10&&smallBadgeQuantity.xMax<=30,"quantity remains in selected cell even when badge fills it");
   InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,70));Draw();
