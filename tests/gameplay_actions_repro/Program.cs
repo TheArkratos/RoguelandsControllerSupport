@@ -55,6 +55,36 @@ class Program {
   Setup();Tick(()=>{Button(0,true);Button(0,false);Input.Down.Add("Jump");});Check(Hotkey(5)&&!ControllerGameplayInput.PlayerButtonDown("Jump"),"same-frame A tap fires hotkey without native jump");
   Setup();Tick(()=>{Button(1,true);Button(1,false);Input.Down.Add("Cancel");});Check(Hotkey(6)&&!ControllerGameplayInput.GameButtonDown("Cancel"),"same-frame B tap fires hotkey without native Cancel");
   Setup();Tick();Input.Down.Add("UseItem2");Check(Hotkey(2),"physical keyboard hotkey unchanged");
+  // The actual shared policy is live, including after per-frame input was cached.
+  bool owns=true;ControllerInputOwnership.Configure(()=>owns);Setup(true);
+  Tick(()=>{Axis(0,short.MaxValue);Button(0,true);Button(9,true);});
+  Check(ControllerGameplayInput.PlayerButton("Right"),"controller caches movement while owned");
+  int before=toggles;owns=false;Input.Down.Add("Jump");Input.Down.Add("Cancel");
+  Check(!ControllerGameplayInput.PlayerButton("Right"),"same-frame handoff removes cached movement");
+  Check(ControllerGameplayInput.PlayerButtonDown("Jump"),"keyboard Jump unchanged despite held raw A");
+  Check(ControllerGameplayInput.GameButtonDown("Cancel"),"keyboard Cancel unchanged despite raw pad");
+  Check(!Hotkey(5),"same-frame handoff clears queued hotkey");
+  ControllerGameplayActions.Prepare(game);Check(toggles==before,"L3 cannot toggle while keyboard owns input");
+  Tick(()=>{Button(9,false);Button(9,true);});Check(toggles==before,"fresh raw L3 cannot toggle while source false");
+  Check(!Hotkey(5),"raw hotkey cannot inject while source false");
+  Input.Down.Add("Inventory");Input.Down.Add("CombatMode");
+  Check(ControllerGameplayInput.GameButtonDown("Inventory")&&ControllerGameplayInput.GameButtonDown("CombatMode"),"native menu/mode retain exact route while source false");
+  owns=true;Tick();Check(!Hotkey(5)&&toggles==before,"held hotkey and L3 do not rearm at handoff");
+  Tick(()=>{Button(0,false);Button(9,false);});Tick(()=>{Button(0,true);Button(9,true);});
+  Check(Hotkey(5)&&toggles==before+1,"release and fresh press rearm hotkey and L3");
+  // Primary trigger must release before controller ownership can fire again.
+  Tick(()=>Axis(5,short.MaxValue));Check(ControllerGameplayInput.PlayerAxis("Attack")<0,"owned primary trigger fires");
+  owns=false;Input.Axes["Attack"]=0.25f;Input.Axes["Horizontal"]=-0.75f;
+  Check(ControllerGameplayInput.PlayerAxis("Attack")==0.25f&&ControllerGameplayInput.PlayerAxis("Horizontal")==-0.75f,"handoff preserves exact native axes despite held controller stick/trigger");
+  Input.Axes.Clear();owns=true;Tick();Check(ControllerGameplayInput.PlayerAxis("Attack")==0,"held primary cannot fire after ownership handoff");
+  Tick(()=>Axis(5,short.MinValue));ControllerGameplayInput.PlayerAxis("Attack");
+  Tick(()=>Axis(5,short.MaxValue));Check(ControllerGameplayInput.PlayerAxis("Attack")<0,"released primary trigger rearms");
+  owns=false;Input.Held.Add("Up");Input.Up.Add("Right");
+  Check(ControllerGameplayInput.PlayerButton("Up")&&ControllerGameplayInput.PlayerButtonUp("Right"),"native held/up reads stay intact while source false");
+  Input.Held.Clear();Input.Up.Clear();
+  ControllerInputOwnership.Reset();Tick(()=>Axis(0,short.MaxValue));
+  Check(!ControllerGameplayInput.PlayerButton("Right"),"unconfigured policy defaults to native input");
+  ControllerInputOwnership.Configure(()=>true);
   Console.WriteLine("Gameplay actions: "+checks+" checks passed.");
  }
 }

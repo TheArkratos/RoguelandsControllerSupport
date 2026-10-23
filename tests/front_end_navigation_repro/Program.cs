@@ -432,11 +432,51 @@ internal static class Program
         peer.enabled=true;peer.gameObject.activeInHierarchy=false;ControllerFrontEndMenus.Begin(title);
         Assert(Same(last.size,restored),"inactive peer is ignored");
         peer.gameObject.activeInHierarchy=true;ControllerFrontEndMenus.Begin(title);
-        Assert(Same(last.size,new Vector3(1.4f,.2f,2f)),"mouse-only disconnected controller still normalizes real hitbox");
+        Assert(Same(last.size,new Vector3(1.4f,.2f,2f)),"controller ownership normalizes real hitbox even if pad disconnected");
         ControllerFrontEndMenus.Reset();Physics.Hit=null;
+    }
+    private static void OwnershipHandoff()
+    {
+        bool active = false;
+        ControllerInputOwnership.Configure(() => active);
+        var root = new GameObject("characters");
+        var first = AddBox(root, "bs0", 0, 10);
+        var last = AddBox(root, "bs5", 10, 0, 1.7f, .3f);
+        var original = last.size;
+        var pad = ConnectedState();
+        var title = new Menuu { menuCharSelect = root };
+        ControllerFrontEndMenus.Configure(() => pad, Config(), null);
+        ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size, original), "false ownership preserves native character hitbox");
+        Assert(ControllerFrontEndMenus.SelectedCollider == null, "false ownership does not choose a default");
+        active = true;
+        ControllerFrontEndMenus.Begin(title);
+        AssertSelected("controller ownership chooses top-left character", first);
+        Assert(Same(last.size, first.size), "controller ownership normalizes hitbox");
+        active = false;
+        ControllerFrontEndMenus.Begin(title);
+        Assert(Same(last.size, original), "mouse handoff restores native hitbox");
+        Assert(ControllerFrontEndMenus.SelectedCollider == null, "mouse handoff clears controller selection");
+        active = true;
+        ControllerFrontEndMenus.Begin(title);
+        Physics.Hit = first;
+        Button(pad, 0);
+        ControllerFrontEndMenus.Begin(title);
+        Assert(ControllerFrontEndMenus.MouseButtonDown(0), "active ownership creates virtual click");
+        active = false;
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0), "same-frame ownership loss blocks cached virtual click");
+        Assert(Same(last.size, original), "same-frame input read restores native geometry");
+        active = true; ControllerFrontEndMenus.Begin(title);
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0), "held activation cannot replay on reclaim");
+        pad.BeginFrame(); pad.Apply(new RawJoystickEvent { Type=1,Number=0,Value=0 }); ControllerFrontEndMenus.Begin(title);
+        Button(pad,0); ControllerFrontEndMenus.Begin(title);
+        Assert(ControllerFrontEndMenus.MouseButtonDown(0), "fresh activation works after ownership reclaim");
+        ControllerFrontEndMenus.Reset(); Physics.Hit = null;
+        ControllerInputOwnership.Configure(() => true);
     }
     private static int Main()
     {
+        OwnershipHandoff();
         CharacterHitboxes();
         FrontEndDPadCoverage();CharacterEntryAndHandoff();NativeClicksAndExclusions();
         DPadAndInitialCharacterRed();

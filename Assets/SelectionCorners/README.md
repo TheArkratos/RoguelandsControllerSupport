@@ -8,10 +8,14 @@ Four transparent, 6×6 pixel PNGs form the shared menu-selection highlight:
 - `corner-bottom-left.png`
 
 Place each sprite at the corresponding corner of the selected item's or slot's
-on-screen bounds. Keep the sprites at native pixel size with point filtering;
-the gap between corners expands with the target rectangle. The same logical
+on-screen bounds. Use point filtering; ordinary menus keep the native corner size.
+The gap between corners expands with the target rectangle. The same logical
 rectangle should drive controller selection and mouse-hover highlighting.
-These are artwork assets for Phase 3, not yet wired into the mod or its package.
+These assets are embedded in ControllerSupport.dll and used by the shared
+selection renderer. Active Item Trasher uses red, Emblem Forge blue and Prism
+Forge purple. All use the same sprites and shared 1.5× corner scale. Only corner artwork changes; the selection
+rectangle, hitbox, held icon and quantity geometry retain their normal placement.
+Inactive modes and ordinary menus retain the original tint and size.
 
 `selection-corner-master.png` is the generated transparent source image. The
 four production sprites were mechanically cropped, nearest-neighbor reduced,

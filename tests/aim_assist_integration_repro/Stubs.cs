@@ -69,7 +69,7 @@ namespace UnityEngine {
  public struct Matrix4x4 {public Vector3 origin;public float angle;public static Matrix4x4 identity=>new Matrix4x4();public static Matrix4x4 TRS(Vector3 p,Quaternion q,Vector3 s)=>new Matrix4x4{origin=p,angle=q.z};}
  public struct NetworkPlayer {public int Id;public static bool operator ==(NetworkPlayer a,NetworkPlayer b)=>a.Id==b.Id;public static bool operator !=(NetworkPlayer a,NetworkPlayer b)=>a.Id!=b.Id;public override bool Equals(object o)=>o is NetworkPlayer p&&p.Id==Id;public override int GetHashCode()=>Id;}
  public static class Network {public static NetworkPlayer player;public static Object Instantiate(Object o,Vector3 p,Quaternion q,int g)=>o;}
- public static class Resources {public static Dictionary<string,Object> Assets=new Dictionary<string,Object>();public static Object Load(string path){Object o;return Assets.TryGetValue(path,out o)?o:null;}}
+ public static class Resources {public static int Loads;public static Dictionary<string,Object> Assets=new Dictionary<string,Object>();public static Object Load(string path){Loads++;Object o;return Assets.TryGetValue(path,out o)?o:null;}}
  public class Texture:Object {public string name;}
  public class Shader:Object {public string name;public bool Color,Tint;public static Dictionary<string,Shader> Available=new Dictionary<string,Shader>();public static Shader Find(string name){Shader shader;return Available.TryGetValue(name,out shader)?shader:null;}}
  public class Material:Object {public Shader shader;public Texture mainTexture;public Color Tint;public Material(Shader shader){this.shader=shader;}public bool HasProperty(string p)=>(p=="_Color"&&shader.Color)||(p=="_TintColor"&&shader.Tint);public void SetColor(string p,Color color){Tint=color;}}

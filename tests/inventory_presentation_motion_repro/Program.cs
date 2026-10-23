@@ -13,6 +13,29 @@ class Program{
  Check(Near(number.rect.y,1040),"quantity reads live badge after camera moves vertically between Update and OnGUI");
  var corners=(SpriteRenderer[])typeof(SelectionCornerRenderer).GetField("renderers",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(renderer);
  Check(Near(corners[0].transform.position.x-Camera.main.transform.position.x,100)&&Near(corners[0].transform.position.y-Camera.main.transform.position.y,160),"corners remain on cell after horizontal/vertical post-Update movement");
+
+ var style=typeof(SelectionCornerRenderer).GetMethod("SetStyle",BindingFlags.Instance|BindingFlags.NonPublic);
+ Check(style!=null,"actual corner renderer supports reversible native-mode styles");
+ var originalScale=new Vector3[4];var originalColor=new Color[4];var anchor=new Vector3[4];
+ for(int i=0;i<4;i++){originalScale[i]=corners[i].transform.localScale;originalColor[i]=corners[i].color;anchor[i]=corners[i].transform.position;}
+ var icon=(SpriteRenderer)typeof(SelectionCornerRenderer).GetField("heldIconRenderer",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(renderer);
+ Color iconColor=icon.color;Bounds iconBefore=renderer.HeldItemBounds.Value;
+ foreach(var mode in new[]{SelectionCornerStyle.Red,SelectionCornerStyle.Blue,SelectionCornerStyle.Purple}) {
+ for(int frame=0;frame<100;frame++){style.Invoke(renderer,new object[]{mode});renderer.Show(slot);}
+ for(int i=0;i<4;i++){
+ Check(Near(corners[i].color.r,mode==SelectionCornerStyle.Red?1:mode==SelectionCornerStyle.Purple?.65f:0)&&Near(corners[i].color.g,mode==SelectionCornerStyle.Purple?.15f:0)&&Near(corners[i].color.b,mode==SelectionCornerStyle.Red?0:1)&&Near(corners[i].color.a,originalColor[i].a),"active corner uses "+mode+" and retains alpha: "+i);
+ Check(Near(corners[i].transform.localScale.x,originalScale[i].x*1.5f)&&Near(corners[i].transform.localScale.y,originalScale[i].y*1.5f)&&Near(corners[i].transform.localScale.z,originalScale[i].z),"repeated active frames enlarge each corner exactly 50 percent without stacking: "+i);
+ Check(Near(corners[i].transform.position.x,anchor[i].x)&&Near(corners[i].transform.position.y,anchor[i].y),"active style preserves true hitbox anchors: "+i);}
+ Bounds iconActive=renderer.HeldItemBounds.Value;
+ Check(Near(iconActive.min.x,iconBefore.min.x)&&Near(iconActive.max.y,iconBefore.max.y)&&Near(iconActive.size.x,iconBefore.size.x)&&Near(iconActive.size.y,iconBefore.size.y),"active style preserves held-icon geometry and quantity badge bounds");
+ Check(Near(icon.color.r,iconColor.r)&&Near(icon.color.g,iconColor.g)&&Near(icon.color.b,iconColor.b)&&Near(icon.color.a,iconColor.a),"active style never tints the held icon");
+ }
+ style.Invoke(renderer,new object[]{SelectionCornerStyle.Normal});
+ for(int i=0;i<4;i++){Check(Near(corners[i].color.r,originalColor[i].r)&&Near(corners[i].color.g,originalColor[i].g)&&Near(corners[i].color.b,originalColor[i].b)&&Near(corners[i].color.a,originalColor[i].a)&&Near(corners[i].transform.localScale.x,originalScale[i].x)&&Near(corners[i].transform.localScale.y,originalScale[i].y),"inactive restores captured corner tint and dimensions: "+i);}
+ style.Invoke(renderer,new object[]{SelectionCornerStyle.Red});renderer.Hide();
+ Check(Near(corners[0].transform.localScale.x,originalScale[0].x)&&Near(corners[0].color.g,originalColor[0].g),"Hide resets active style before a later menu can reuse renderer");
+ renderer.Show(slot);style.Invoke(renderer,new object[]{SelectionCornerStyle.Normal});
+ Check(Near(corners[0].transform.localScale.x,originalScale[0].x)&&Near(corners[0].color.g,originalColor[0].g),"hidden/reused renderer can restore normal style");
  Bounds after=renderer.HeldItemBounds.Value;Check(Near(after.size.x,75)&&Near(after.size.y,75),"camera motion preserves accepted held size");
  Collider next=new Collider();next.transform.parent=Camera.main.transform;next.transform.localScale=new Vector3(.5f,2,1);next.bounds=new Bounds{min=new Vector3(230,120,0),max=new Vector3(290,180,0)};renderer.Show(next);Bounds switched=renderer.HeldItemBounds.Value;
  Check(Near(switched.size.x,75)&&Near(switched.size.y,75)&&Near(switched.min.x,230),"switching differently scaled parents preserves accepted world geometry");

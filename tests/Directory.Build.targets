@@ -1,0 +1,9 @@
+<Project>
+  <!-- These fixtures compile production source directly. Share the real policy,
+       while keeping the legacy positive-fixture default explicitly test-only. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)../src/ControllerInputOwnership.cs" Link="ControllerInputOwnership.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ControllerOwnershipTestBootstrap.cs"
+             Condition="'$(ControllerOwnershipTestBootstrap)' != 'false'" />
+  </ItemGroup>
+</Project>

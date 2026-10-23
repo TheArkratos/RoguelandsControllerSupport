@@ -57,6 +57,7 @@ namespace ControllerSupport
         }
         internal static void Set(Projectile owner,Vector3 point)
         {
+            if(!ControllerInputOwnership.UsingController) { Refresh(false); return; }
             if(!owner || !FindTemplate()) return;
             int id=owner.GetInstanceID(); Marker marker;
             if(markers.TryGetValue(id,out marker) && (marker.Template!=template || !marker.Glyph || !marker.Material))
@@ -84,6 +85,7 @@ namespace ControllerSupport
         }
         internal static void Refresh(bool visible)
         {
+            visible = visible && ControllerInputOwnership.UsingController;
             var expired=new List<int>();
             foreach(var pair in markers)
             {

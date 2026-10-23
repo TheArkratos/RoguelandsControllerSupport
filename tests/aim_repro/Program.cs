@@ -10,6 +10,24 @@ internal static class Program
         input.Connect();
         ControllerAim.Configure(() => input);
 
+        // The shared last-input flag defeats a connected, held stick, including
+        // a handoff after this frame's aim point has already been cached.
+        bool controllerOwner = true;
+        ControllerInputOwnership.Configure(() => controllerOwner);
+        input.Apply(new RawJoystickEvent { Type = 2, Number = 3, Value = 32767 });
+        Time.frameCount = -10;
+        if (!ControllerAim.TryWorldPoint(out _)) throw new Exception("Owned fixture failed to acquire aim.");
+        controllerOwner = false;
+        if (ControllerAim.TryWorldPoint(out _) || Menuu.usingController)
+            throw new Exception("Shared keyboard ownership did not defeat cached controller aim/native flag.");
+        Time.frameCount++;
+        Time.unscaledTime += 10f;
+        if (ControllerAim.TryWorldPoint(out _)) throw new Exception("Held stick reclaimed aim while shared ownership was false.");
+        if (ControllerAim.AttackMousePosition().x != Input.mousePosition.x)
+            throw new Exception("Unowned attack adapter changed native mouse input.");
+        controllerOwner = true;
+        ControllerAim.Configure(() => input);
+
         // A full stick rotation is sampled across adjacent 60-Hz frames.
         input.Apply(new RawJoystickEvent { Type = 2, Number = 3, Value = 32767 });
         Time.frameCount = 1;

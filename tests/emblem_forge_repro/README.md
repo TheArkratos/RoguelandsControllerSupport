@@ -3,7 +3,7 @@
 Runs the actual `ItemConversionContext`, shared inventory navigator, binding parser,
 raw joystick state, action adapter and hover/cursor helper. Unity scene behavior
 and native/loader conversion are deterministic doubles. The source-backed native
-replay covers Emblem Forge and Item Trasher. It sets `slotID` from the selected collider before applying the installed
+replay covers Emblem Forge, Item Trasher and Prism Forge. It sets `slotID` from the selected collider before applying the installed
 loader's conversion. It does not establish physical or multiplayer acceptance.
 
 ```bash
@@ -28,3 +28,13 @@ value calculation is a test-double provider; the controller never computes price
 Actual Trash opener and cached-location fallback run in `inventory_lifecycle_repro`;
 compiled patch discovery and native TrashItem target coverage run in
 `phase51_native_il_repro`.
+
+Prism checks cover nested `bPrism` discovery/right-stick navigation, native toggle
+and purple indication, all three shard IDs at 9/10/25 quantities, exact output
+and remainder with stale initial `slotID`, safe ten-input custom recipes and
+rejection of unsafe counts/invalid outputs. Generated output keeps shared safe
+return restrictions; native Prism ends conversion mode and does not rearm on
+placement. Cancellation, held-item recovery, custom bindings, mouse ownership,
+freeze/quarantine, idle frames and direct red/blue/purple transitions are covered.
+The real renderer fixture checks each tint at 1.5x over repeated frames while
+preserving anchors, held-item appearance and quantity geometry.

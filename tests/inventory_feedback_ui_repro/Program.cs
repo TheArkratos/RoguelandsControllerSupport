@@ -56,6 +56,13 @@ class Program {
   InventoryFeedback.SetContext(game,slot,false,bindings,"Place","Place one",false,true,Badge(10,30)); Draw();
   Check(GUI.Labels.Count==0,"mouse hides controller hints and quantity");
   InventoryFeedback.Reject("Wrong item type"); Draw(); Check(GUI.Labels.Count==1 && GUI.Labels[0]=="Wrong item type","mouse rejection stays visible");CardsBoundedAndCentered();
+  ControllerInputOwnership.Configure(() => false); Draw();
+  Check(GUI.Labels.Count==0 && GUI.Boxes.Count==0,"same-frame ownership handoff clears pending rejection and quantity");
+  InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",true,true,Badge(10,30));
+  InventoryFeedback.Reject("Must stay hidden"); Draw();
+  Check(GUI.Labels.Count==0 && GUI.Boxes.Count==0,"false shared ownership overrides controller context and rejection");
+  ControllerInputOwnership.Configure(() => true); Draw();
+  Check(GUI.Labels.Count==0,"reclaim never resurrects pending rejection");
   Time.realtimeSinceStartup=3; Draw(); Check(GUI.Labels.Count==0,"rejection expires");
   SnugQuantity(game,slot,bindings,1920,1200,100,145);
   SnugQuantity(game,slot,bindings,360,1200,100,130);

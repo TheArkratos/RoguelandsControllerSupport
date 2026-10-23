@@ -5,9 +5,11 @@ namespace UnityEngine {
  public static class Input {
   public static readonly HashSet<string> Down=new HashSet<string>();
   public static bool GetButtonDown(string name){return Down.Contains(name);}
-  public static bool GetButton(string name){return false;}
-  public static bool GetButtonUp(string name){return false;}
-  public static float GetAxis(string name){return 0;}
+  public static readonly HashSet<string> Held=new HashSet<string>(), Up=new HashSet<string>();
+  public static readonly Dictionary<string,float> Axes=new Dictionary<string,float>();
+  public static bool GetButton(string name){return Held.Contains(name);}
+  public static bool GetButtonUp(string name){return Up.Contains(name);}
+  public static float GetAxis(string name){return Axes.TryGetValue(name,out var value)?value:0;}
  }
  public class GameObject {
   public NetworkView view=new NetworkView();

@@ -9,6 +9,7 @@
     <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/SelectionCornerStyle.cs" Link="SelectionCornerStyle.cs" />
     <Compile Include="../../src/ControllerFrontEndMenus.cs" Link="ControllerFrontEndMenus.cs" />
     <Compile Include="../../src/BindingConfig.cs" Link="BindingConfig.cs" />
     <Compile Include="../../src/JoystickInputState.cs" Link="JoystickInputState.cs" />

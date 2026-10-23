@@ -223,6 +223,7 @@ namespace ControllerSupport
         [HarmonyPriority(Priority.First)]
         internal static bool Prefix(GameScript __instance)
         {
+            if (!ControllerInputOwnership.UsingController) return true;
             string reason;
             if (InventoryItemLifecycle.LeaveRange(__instance, out reason)) return true;
             ControllerMenuSelection.Reject(__instance, reason);

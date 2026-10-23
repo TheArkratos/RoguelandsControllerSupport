@@ -37,7 +37,19 @@ namespace ControllerSupport
         internal static string LastReason;
         internal static void SetContext(GameScript game, UnityEngine.Collider selected, bool controller,
             BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false) { }
+        internal static void ClearPresentation() { LastReason=null; }
         internal static void Reject(string reason) { LastReason=reason; }
         internal static void Reset() { LastReason=null; }
+    }
+}
+
+// These legacy fixtures observe selection/actions only. Actual native cursor
+// synchronization and conversion visuals are covered by native_inventory_cursor_repro.
+namespace ControllerSupport
+{
+    internal static class InventoryNativeCursor
+    {
+        internal static void Update(GameScript game) { }
+        internal static void Reset() { }
     }
 }

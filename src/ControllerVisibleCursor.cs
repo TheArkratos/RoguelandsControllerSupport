@@ -9,10 +9,17 @@ namespace ControllerSupport
     {
         internal static bool Prefix(ActionCursor cursor)
         {
+            InventoryNativeCursor.BeforeNativeUpdate(cursor);
             if (cursor == null || cursor.gameObject == null ||
                 !string.Equals(cursor.gameObject.name, "actionCursor", StringComparison.Ordinal))
                 return true;
             Vector3 point;
+            if (!ControllerInputOwnership.UsingController)
+            {
+                // Release any native flag the combat adapter previously owned.
+                ControllerAim.TryWorldPoint(out point);
+                return true;
+            }
             if (ControllerExploration.TryWorldPoint(out point))
             {
                 cursor.transform.position = new Vector3(point.x, point.y, 0f);

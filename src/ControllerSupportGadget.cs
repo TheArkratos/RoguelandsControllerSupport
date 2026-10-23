@@ -33,6 +33,7 @@ namespace ControllerSupport
         protected override void Initialize()
         {
             probe = new InputProbe(Logger, bindings ?? BindingConfig.SafeDefaults());
+            ControllerInputOwnership.Configure(() => probe != null && probe.UsingController);
             ControllerGameplayInput.Configure(probe.PollState, bindings ?? BindingConfig.SafeDefaults());
             ControllerDialogueInput.Configure(probe.PollState, bindings ?? BindingConfig.SafeDefaults());
             ControllerAim.Configure(probe.PollState);
@@ -58,6 +59,7 @@ namespace ControllerSupport
 
         protected override void Unload()
         {
+            ControllerInputOwnership.Reset();
             ControllerGameplayInput.Reset();
             ControllerDialogueInput.Reset();
             ControllerGameplayActions.Reset();

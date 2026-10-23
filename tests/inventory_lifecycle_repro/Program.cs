@@ -67,10 +67,37 @@ internal static class Program
             .Invoke(null, new object[] { game });
     }
 
+    private static void OpenPrism(GameScript game, Vector3 position)
+    {
+        game.Prism();
+        PlayerScript.curInteractObj = new GameObject();
+        PlayerScript.curInteractObj.transform.position = position;
+        typeof(InventoryPrismContextPatch).GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, new object[] { game });
+    }
+
     public static void Main()
     {
         string reason;
         GameScript g = Fresh();
+        OpenPrism(g, new Vector3(210, 85, 0));
+        g.inventory[6] = new Item(86, 25);
+        g.PrismItem(6); g.holdingItem.extra = "generated prism";
+        Check(!InventoryItemLifecycle.TryReturn(g, out reason) && reason.Contains("source")
+            && g.inventory[6].id == 86 && g.inventory[6].q == 5 && g.holdingItem.id == 89 && g.holdingItem.q == 2,
+            "Prism generated output has no invented source and keeps native consumed input unchanged on Cancel");
+        PlayerScript.curInteractObj = new GameObject();
+        PlayerScript.curInteractObj.transform.position = new Vector3(700, 900, 0);
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.LastPosition.x == 210
+            && GadgetCoreAPI.LastPosition.y == 86.5f, "Prism context remembers station position for generated held-output range exit");
+        Check(g.holdingItem.id == 0 && GadgetCoreAPI.LastDrop.id == 89 && GadgetCoreAPI.LastDrop.q == 2
+            && GadgetCoreAPI.LastDrop.extra == "generated prism", "Prism range exit drops exact generated output and clears held item after success");
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 1,
+            "Repeated Prism exit does not duplicate generated output");
+        g.menuPrism.activeSelf = false; InventoryItemLifecycle.ObserveContext(g); g.holdingItem = new Item(90, 1);
+        Check(!InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 1,
+            "Closing Prism invalidates its remembered station position");
+        g = Fresh();
         g.inventory[3] = new Item(10, 5) { extra = "metadata" };
         Action(g, "SelectItem", 3);
         Check(InventoryItemLifecycle.TryReturn(g, out reason), "pickup cancellation succeeds");
@@ -163,7 +190,7 @@ internal static class Program
         Check(InventoryItemLifecycle.MutationsBlocked(g) && !Guard(g), "scene transition cannot silently release an uncertain held copy");
         var targets = ((IEnumerable<MethodBase>)typeof(InventoryMutationGuardPatch)
             .GetMethod("TargetMethods", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null)).Select(x => x.Name).ToList();
-        foreach (string name in new[] { "SelectItem", "SelectItemStorage", "SplitItem", "SwapItem", "PlaceItem", "PlaceOneItem", "CombineItem", "SelectItemCraft", "ForgeEmblem", "TrashItem", "DropItem", "CloseAllMenus" })
+        foreach (string name in new[] { "SelectItem", "SelectItemStorage", "SplitItem", "SwapItem", "PlaceItem", "PlaceOneItem", "CombineItem", "SelectItemCraft", "ForgeEmblem", "TrashItem", "PrismItem", "DropItem", "CloseAllMenus" })
             Check(targets.Contains(name), "native guard covers " + name);
 
         g = Fresh(); g.holdingItem = new Item(20, 8); InstallCapture(false);
@@ -322,6 +349,45 @@ internal static class Program
         if(Guard(g)) g.TrashItem(6);
         Check(ReferenceEquals(g.inventory[6], beforeTrash) && g.inventory[6].id == 21 && g.inventory[6].q == 5,
             "Production quarantine guard blocks native TrashItem without mutating the ingredient");
+        g = Fresh(); OpenPrism(g, new Vector3(210, 85, 0));
+        g.inventory[6] = new Item(21, 5) { extra = "Prism pickup" }; Action(g, "SelectItem", 6);
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && g.inventory[6].q == 5
+            && g.inventory[6].extra == "Prism pickup" && GadgetCoreAPI.Drops == 0,
+            "Prism known pickup source returns safely without fallback drop");
+        g.inventory[7] = new Item(86, 25); g.holdingItem = new Item(90, 2) { extra = "uncertain Prism output" };
+        GadgetCoreAPI.ThrowSpawn = true; Network.FailDestroy = true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(g, out reason) && !Guard(g),
+            "Uncertain Prism output drop quarantines native conversion");
+        Item beforePrism = g.inventory[7], beforePrismHeld = g.holdingItem;
+        if (Guard(g)) g.PrismItem(7);
+        Check(ReferenceEquals(g.inventory[7], beforePrism) && g.inventory[7].q == 25
+            && ReferenceEquals(g.holdingItem, beforePrismHeld) && g.holdingItem.id == 90 && g.holdingItem.q == 2
+            && g.holdingItem.extra == "uncertain Prism output", "Prism quarantine preserves ingredient and held output without native conversion");
+
+        g = Fresh(); g.inventory[3] = new Item(10, 1);
+        Action(g, "SelectItem", 3); g.PlaceItem(4);
+        OpenPrism(g, new Vector3(220, 90, 0)); g.inventory[6] = new Item(87, 10); g.PrismItem(6);
+        Check(!InventoryItemLifecycle.TryReturn(g, out reason) && reason.Contains("source")
+            && g.inventory[3].id == 0 && g.inventory[4].id == 10 && g.holdingItem.id == 90,
+            "Production Prism opener clears stale pickup provenance before generating output");
+        PlayerScript.curInteractObj = null;
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.LastPosition.x == 220
+            && GadgetCoreAPI.LastPosition.y == 91.5f && GadgetCoreAPI.LastDrop.id == 90,
+            "Production Prism opener captures fallback location before interaction disappears");
+
+        g = Fresh(); OpenPrism(g, new Vector3(210, 85, 0)); g.holdingItem = new Item(91, 1);
+        PlayerScript.curInteractObj = null; g.menuPrism = new GameObject { activeSelf = true };
+        InventoryItemLifecycle.ObserveContext(g);
+        Check(!InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 0,
+            "Replacement Prism panel without opener cannot reuse previous station position");
+        g = Fresh(); OpenPrism(g, new Vector3(210, 85, 0)); g.holdingItem = new Item(91, 1);
+        PlayerScript.curInteractObj = null; g.menuPrism.activeSelf = false; g.Planets(); InventoryItemLifecycle.ObserveContext(g);
+        Check(!InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 0,
+            "Switching Prism to portal without opener invalidates previous Prism position");
+        g = Fresh(); OpenPrism(g, new Vector3(210, 85, 0)); g.holdingItem = new Item(91, 1);
+        PlayerScript.curInteractObj = null; Application.loadedLevel++;
+        Check(!InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 0,
+            "Prism cached position cannot cross scene transition");
         Console.WriteLine("Inventory lifecycle: " + checks + " checks passed.");
     }
 }

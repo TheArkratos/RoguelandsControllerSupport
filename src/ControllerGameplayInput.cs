@@ -20,6 +20,8 @@ namespace ControllerSupport
         private static bool leftPressed, rightPressed, downPressed;
         private static bool leftReleased, rightReleased, upReleased, downReleased;
         private static bool attackWasInCombat;
+        private static bool owned;
+        private static int ownershipEntryFrame = -1;
         private static bool attackRequiresRelease = true;
         private static readonly FieldInfo CanInteractField = typeof(PlayerScript).GetField("canInteract",
             BindingFlags.Instance | BindingFlags.NonPublic);
@@ -43,6 +45,7 @@ namespace ControllerSupport
         private static void ResetFrame()
         {
             frame = -1;
+            owned = false; ownershipEntryFrame = -1;
             inventoryInputFrame = actionInputFrame = -1;
             consumedAction = null;
             state = null;
@@ -55,6 +58,18 @@ namespace ControllerSupport
 
         private static bool Refresh()
         {
+            // Ownership is live, even after another adapter cached this frame.
+            if (!ControllerInputOwnership.UsingController)
+            {
+                ResetFrame();
+                return false;
+            }
+            if (!owned)
+            {
+                owned = true;
+                ownershipEntryFrame = Time.frameCount;
+                attackRequiresRelease = true;
+            }
             if (frame == Time.frameCount) return state != null && state.Connected;
             frame = Time.frameCount;
             JoystickInputState next = stateProvider == null ? null : stateProvider();
@@ -121,6 +136,7 @@ namespace ControllerSupport
 
         internal static void ConsumeInventoryInput()
         {
+            if (!ControllerInputOwnership.UsingController) { ResetFrame(); return; }
             inventoryInputFrame = Time.frameCount;
             ControllerGameplayActions.ConsumeForFrame();
         }
@@ -129,12 +145,18 @@ namespace ControllerSupport
         // every gameplay input. Shared bindings must not activate twice.
         internal static void ConsumeActionForFrame(string action)
         {
+            if (!ControllerInputOwnership.UsingController) { ResetFrame(); return; }
             actionInputFrame = Time.frameCount;
             consumedAction = action;
         }
 
         internal static bool IsActionConsumed(string action)
         {
+            if (!ControllerInputOwnership.UsingController)
+            {
+                ResetFrame();
+                return false;
+            }
             return actionInputFrame == Time.frameCount && bindings != null &&
                 consumedAction != null && bindings[consumedAction] != "Unbound" &&
                 bindings[action] == bindings[consumedAction];
@@ -142,7 +164,7 @@ namespace ControllerSupport
 
         internal static bool PhysicalButtonConsumed(int button)
         {
-            return actionInputFrame == Time.frameCount && bindings != null &&
+            return ControllerInputOwnership.UsingController && actionInputFrame == Time.frameCount && bindings != null &&
                 consumedAction != null && Refresh() && PhysicalButtonActive(button) &&
                 bindings[consumedAction] == "Joystick1Button" + button;
         }
@@ -167,7 +189,8 @@ namespace ControllerSupport
 
         private static bool Bound(string action, int kind)
         {
-            return bindings != null && !IsActionConsumed(action) && (kind == 1 ? bindings.Pressed(action, state) : bindings.Held(action, state));
+            return ControllerInputOwnership.UsingController && bindings != null && !IsActionConsumed(action) &&
+                (kind != 1 || ownershipEntryFrame != Time.frameCount) && (kind == 1 ? bindings.Pressed(action, state) : bindings.Held(action, state));
         }
 
         // These signatures deliberately mirror the Unity calls replaced by
@@ -299,12 +322,12 @@ namespace ControllerSupport
 
         internal static bool ExplorationPrimaryHeld()
         {
-            return Refresh() && !InventoryOwnsInput() && BoundHeld("PrimaryAction");
+            return Refresh() && !attackRequiresRelease && !InventoryOwnsInput() && BoundHeld("PrimaryAction");
         }
 
         internal static bool ExplorationPrimaryPressed()
         {
-            return Refresh() && !InventoryOwnsInput() && BoundPressed("PrimaryAction");
+            return Refresh() && !attackRequiresRelease && !InventoryOwnsInput() && BoundPressed("PrimaryAction");
         }
 
         internal static bool ExplorationContextSwitchPressed()

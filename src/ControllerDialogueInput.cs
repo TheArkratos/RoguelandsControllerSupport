@@ -43,6 +43,13 @@ namespace ControllerSupport
 
         internal static void Prepare(GameScript game)
         {
+            if (!ControllerInputOwnership.UsingController)
+            {
+                // Release this UI's binding ownership without consuming native input.
+                armed = awaitingRelease = previouslyAllowed = false;
+                frame = -1;
+                return;
+            }
             if (frame == Time.frameCount) return;
             frame = Time.frameCount;
             JoystickInputState state = stateProvider == null ? null : stateProvider();

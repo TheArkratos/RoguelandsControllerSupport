@@ -202,6 +202,21 @@ internal static class Program
         fallback.exists = false;
         ControllerExploration.UpdateAndDispatch(viewportGame);
         NoPoint();
+        fallback.exists=true;
+        viewportGame.actionCursor.SetActive(false);
+        bool owns=true;ControllerInputOwnership.Configure(()=>owns);
+        ControllerExploration.UpdateAndDispatch(viewportGame);Point(17);
+        owns=false;NoPoint();
+        ControllerGameplayInput.Pressed=true;
+        int activations=viewportGame.activateCalls;
+        ControllerExploration.UpdateAndDispatch(viewportGame);
+        NoPoint();
+        Check(viewportGame.activateCalls==activations,"keyboard ownership cannot dispatch controller droid");
+        Check(!viewportGame.actionCursor.activeSelf,"keyboard handoff clears controller resource cursor");
+        ControllerGameplayInput.Pressed=false;
+        owns=true;NoPoint(); // no stale target reappears before a new controller update
+        ControllerExploration.UpdateAndDispatch(viewportGame);Point(17);
+        ControllerInputOwnership.Configure(()=>true);
         Console.WriteLine("Passed " + count + " exploration selection checks.");
     }
 }

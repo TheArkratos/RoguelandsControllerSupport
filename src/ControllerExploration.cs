@@ -50,7 +50,7 @@ namespace ControllerSupport
 
         private static bool Eligible(GameScript game)
         {
-            if (game == null || InShipField == null || InventoryField == null ||
+            if (!ControllerInputOwnership.UsingController || game == null || InShipField == null || InventoryField == null ||
                 (bool)InShipField.GetValue(game) || !GameScript.inInstance || GameScript.isTown ||
                 GameScript.combatMode || GameScript.buildMode || GameScript.dead ||
                 GameScript.pausing || GameScript.inventoryOpen || GameScript.talking ||
@@ -201,6 +201,7 @@ namespace ControllerSupport
         internal static bool TryWorldPoint(out Vector3 point)
         {
             point = Vector3.zero;
+            if (!ControllerInputOwnership.UsingController) { target = null; return false; }
             if (!target || GameScript.combatMode) return false;
             point = target.transform.position;
             return true;

@@ -30,6 +30,7 @@ namespace ControllerSupport
 
         internal static void Update(bool usingController)
         {
+            usingController = usingController && ControllerInputOwnership.UsingController;
             try
             {
                 GameObject player = MenuScript.player;

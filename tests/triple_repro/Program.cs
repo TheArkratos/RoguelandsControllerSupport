@@ -139,6 +139,16 @@ internal static class Program
         Time.frameCount = 1;
         Time.unscaledTime = 0.02f;
         AssertX(14f, ControllerAim.AttackMousePosition().x, "controller owns first shot");
+        ControllerInputOwnership.Configure(() => false);
+        AssertX(-20f, ControllerAim.AttackMousePosition().x, "shared false defeats same-frame delayed aim");
+        Time.frameCount++;
+        Time.unscaledTime = 1f;
+        AssertX(-20f, ControllerAim.AttackMousePosition().x, "held stick cannot reclaim unowned delayed aim");
+        ControllerInputOwnership.Configure(() => true);
+        ControllerAim.Configure(() => pad);
+        Time.frameCount = 1;
+        Time.unscaledTime = .02f;
+        AssertX(14f, ControllerAim.AttackMousePosition().x, "controller return reacquires delayed aim");
         Input.mousePosition = new Vector3(-25f, 0f, 0f);
         Time.frameCount = 2;
         Time.unscaledTime = 0.04f;

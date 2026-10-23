@@ -57,6 +57,14 @@ internal static class Program
         }
         AssertClose(8f, CameraTarget(camera, ySource, false), "controller camera Y");
 
+        // The production-transpiler replacement must obey shared ownership even
+        // when this frame already cached a controller aim point.
+        ControllerInputOwnership.Configure(() => false);
+        AssertClose(-7f, CameraTarget(camera, xSource, true), "shared mouse ownership camera X");
+        AssertClose(1f, CameraTarget(camera, ySource, false), "shared mouse ownership camera Y");
+        ControllerInputOwnership.Configure(() => true);
+        if (!ControllerAim.TryWorldPoint(out _)) throw new Exception("Controller return did not restore camera aim.");
+
         // Physical mouse motion must still take ownership and frame the mouse.
         Input.mousePosition = new Vector3(-20f, -10f, 0f);
         NextFrame(13, 0.8f);

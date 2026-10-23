@@ -11,6 +11,7 @@ namespace GadgetCore.API
         internal static bool ThrowOnCopy;
         internal static bool Frozen;
         internal static System.Collections.Generic.Dictionary<int,Tuple<int,int>> emblemForgeRecipes = new System.Collections.Generic.Dictionary<int,Tuple<int,int>>();
+        internal static System.Collections.Generic.Dictionary<int,Tuple<int,int>> prismForgeRecipes = new System.Collections.Generic.Dictionary<int,Tuple<int,int>>();
         public static bool IsInputFrozen() { return Frozen; }
         public static bool CanItemsStack(Item a, Item b) { return a != null && b != null && a.id == b.id && a.tier == b.tier && a.exp == b.exp && a.corrupted == b.corrupted && a.extraData == b.extraData; }
         public static Item CopyItem(Item a) { if (ThrowOnCopy) throw new InvalidOperationException("injected copy failure"); return new Item { extraData=a.extraData,id=a.id,q=a.q,exp=a.exp,tier=a.tier,corrupted=a.corrupted,aspect=a.aspect,aspectLvl=a.aspectLvl }; }
@@ -41,9 +42,21 @@ namespace ControllerSupport
         internal static bool Transfer, Held, Controller;
         internal static void SetContext(GameScript game, UnityEngine.Collider selected, bool controller,
             BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false) { Primary=primary; Secondary=secondary; Transfer=transfer; Held=held; Controller=controller; }
+        internal static void ClearPresentation() { LastReason=null; }
         internal static void Reject(string reason) { LastReason=reason; }
         internal static void Reset() { LastReason=null; }
     }
 }
 
 namespace ControllerSupport { internal static class ControllerGameplayInput { internal static int Consumed; internal static void ConsumeInventoryInput() { Consumed++; } } }
+
+// These legacy fixtures observe selection/actions only. Actual native cursor
+// synchronization and conversion visuals are covered by native_inventory_cursor_repro.
+namespace ControllerSupport
+{
+    internal static class InventoryNativeCursor
+    {
+        internal static void Update(GameScript game) { }
+        internal static void Reset() { }
+    }
+}

@@ -106,11 +106,12 @@ public class GameScript : UnityEngine.Object
     public void SelectPage(int page) { if (page <= storageLevel) { currentStoragePage = page; PageCalls++; } }
     public static bool inventoryOpen = true, pausing, dead, buildMode;
     public UnityEngine.GameObject hoverItem, menuEmblemForge, cursorEmblemForge;
-    public UnityEngine.GameObject menuTrasher;
-    public bool emblemAgain, trashAgain;
-    public int TrashCalls, WorthCalls;
+    public UnityEngine.GameObject menuTrasher, menuPrism;
+    public bool emblemAgain, trashAgain, prismAgain;
+    public int TrashCalls, WorthCalls, PrismCalls;
     public Func<int,int> ItemValue = id => 2;
     public int GetItemWorth(int id) { WorthCalls++; return ItemValue(id); }
+    public void Prismer() { prisming=!prisming; ToggleCalls++; }
     public void Trasher() { trashing=!trashing; ToggleCalls++; }
     public int ForgeCalls, ToggleCalls, slotID=-1;
     public void EmblemForging() { emblemForging=!emblemForging; ToggleCalls++; }
@@ -206,6 +207,8 @@ namespace ControllerSupport
         internal UnityEngine.Collider ShowTarget;
         internal int HeldIconId;
         internal int HeldIconSetCount;
+        internal SelectionCornerStyle Style;
+        internal void SetStyle(SelectionCornerStyle style) { Style=style; }
         internal bool IsAlive { get { return true; } }
         internal static SelectionCornerRenderer TryCreate(float scale, int order,
             Action<string> warning)

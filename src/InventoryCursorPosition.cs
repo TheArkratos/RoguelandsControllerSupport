@@ -3,14 +3,14 @@ using UnityEngine;
 
 namespace ControllerSupport
 {
-    // Native ActionCursor follows Menuu.usingController, which can disagree with
-    // the mod's deliberate-device arbiter during mouse takeover. Correct only
-    // inventory presentation after the native update; leave combat cursors alone.
+    // Anchor controller inventory tooltips after native cursor movement.
+    // Mouse ownership leaves native cursor positioning entirely intact.
     internal static class InventoryCursorPosition
     {
         internal static void Update(ActionCursor cursor, GameScript game,
             Collider selected, bool controllerOwns)
         {
+            if (!ControllerInputOwnership.UsingController || !controllerOwns) return;
             if (cursor == null || game == null || cursor.gameObject == null) return;
             bool held = cursor.gameObject == game.holdingItemObj;
             bool hover = string.Equals(cursor.gameObject.name, "hoverItem", StringComparison.Ordinal);
@@ -26,10 +26,7 @@ namespace ControllerSupport
                 }
                 return;
             }
-            Camera camera = Camera.main;
-            if (camera == null) return;
-            Vector3 mouse = camera.ScreenToWorldPoint(Input.mousePosition);
-            cursor.transform.position = new Vector3(mouse.x, mouse.y, cursor.z);
+
         }
     }
 }

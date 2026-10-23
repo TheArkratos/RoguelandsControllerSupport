@@ -54,6 +54,24 @@ namespace ControllerSupport
         private static bool TryPoint(out Vector3 point)
         {
             point = Vector3.zero;
+            // Check before the per-frame cache: keyboard/mouse can reclaim input
+            // after a controller query earlier in this same frame.
+            if (!ControllerInputOwnership.UsingController)
+            {
+                if (hasExplicitAimOwner && MenuScript.player)
+                {
+                    NetworkView previousOwner = MenuScript.player.GetComponent<NetworkView>();
+                    if (previousOwner && previousOwner.isMine) Menuu.usingController = false;
+                }
+                ownsAim = false;
+                hasExplicitAimOwner = false;
+                hasRenderedAngle = false;
+                hasMouseSample = false;
+                lastFrame = -1;
+                mouseReclaimUntil = 0f;
+                if (AttackOwnershipLost != null) AttackOwnershipLost();
+                return false;
+            }
             if (lastFrame != Time.frameCount)
             {
                 lastFrame = Time.frameCount;

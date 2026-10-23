@@ -45,7 +45,7 @@ internal static class Program
         foreach(string name in new[]{"AimAssistFactoryPatch","AimAssistIteratorPatch","AimAssistDirectPatch","AimAssistStaffSpawnPatch","AimAssistSkillPatch","AimAssistAtalantaPatch",
             "InventoryDropCapturePatch","InventoryMutationGuardPatch","InventorySourcePatch",
             "InventoryChestContextPatch","InventoryPortalContextPatch","InventoryHeldEmptyPatch",
-            "InventoryEmblemContextPatch","InventoryTrashContextPatch"})
+            "InventoryEmblemContextPatch","InventoryTrashContextPatch","InventoryPrismContextPatch"})
         {
             Type patch=inspected.GetType("ControllerSupport."+name,true);
             Check(exported.Contains(patch),"GadgetCore loader discovers exported patch "+name);
@@ -65,17 +65,29 @@ internal static class Program
             new[]{"InventoryPortalContextPatch","GameScript","Planets"},
             new[]{"InventoryHeldEmptyPatch","GameScript","RefreshHoldingSlot"},
             new[]{"InventoryEmblemContextPatch","GameScript","EmblemForge"},
-            new[]{"InventoryTrashContextPatch","GameScript","Trash"}})
+            new[]{"InventoryTrashContextPatch","GameScript","Trash"},
+            new[]{"InventoryPrismContextPatch","GameScript","Prism"}})
         {
             Type patch = inspected.GetType("ControllerSupport." + declaration[0], true);
             CustomAttributeData target = patch.GetCustomAttributesData().Single(a=>a.AttributeType.FullName=="HarmonyLib.HarmonyPatch");
             Check(target.ConstructorArguments.Count>=2 && ((Type)target.ConstructorArguments[0].Value).FullName==declaration[1]
                 && (string)target.ConstructorArguments[1].Value==declaration[2], "Actual lifecycle patch target declaration: "+declaration[0]);
         }
+        Assembly loader=(Assembly)context.GetType().GetMethod("LoadFromAssemblyPath").Invoke(context,new object[]{Path.Combine(managed,"GadgetCore.dll")});
+        Type prismRecipePatch=loader.GetType("GadgetCore.Patches.Patch_GameScript_PrismItem",true);
+        MethodInfo prismRecipePrefix=prismRecipePatch.GetMethod("Prefix",All | BindingFlags.DeclaredOnly);
+        Check(prismRecipePrefix!=null && prismRecipePrefix.GetParameters().Any(p=>p.Name=="___slotID" && p.ParameterType.IsByRef && p.ParameterType.GetElementType().FullName=="System.Int32"),
+            "Actual installed GadgetCore Prism prefix consumes private slotID by reference");
+        // GadgetCore references a legacy mscorlib 2.0 System.Type in its
+        // attribute constructors. Inspect declaration presence here without
+        // decoding that unavailable dependency; verify the exact target below
+        // against the hash-verified loader reference source.
+        Check(prismRecipePatch.GetCustomAttributesData().Any(a=>a.AttributeType.FullName=="HarmonyLib.HarmonyPatch"),
+            "Actual installed GadgetCore Prism recipe class retains Harmony patch declaration");
         ((IDisposable)context).Dispose();
         MethodBase[] mutationTargets = Targets("InventoryMutationGuardPatch");
         Type inventoryGame = game.GetType("GameScript", true);
-        foreach (string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage","ForgeEmblem","TrashItem"})
+        foreach (string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage","ForgeEmblem","TrashItem","PrismItem"})
             Check(mutationTargets.Contains(inventoryGame.GetMethod(name,All,null,new[]{typeof(int)},null)), "Quarantine guards native mutation "+name+"(int)");
         foreach (string name in new[]{"CloseAllMenus","DropItem"})
             Check(mutationTargets.Contains(inventoryGame.GetMethod(name,All,null,Type.EmptyTypes,null)), "Quarantine guards native "+name+"()");
@@ -88,6 +100,31 @@ internal static class Program
         Check(!inventoryGame.GetNestedTypes(All).Any(t=>t.Name.StartsWith("<TrashItem>",StringComparison.Ordinal)),"Native TrashItem has no iterator requiring an additional queued guard");
         Check(Read(trash).Count(i=>Call(i,"GameScript","GetItemWorth"))==1,"Trash conversion retains native worth calculation");
         Check(Read(trash).Count(i=>Call(i,"GameScript","Trasher"))==1,"Trash conversion retains native mode re-entry");
+        MethodInfo prism = inventoryGame.GetMethod("PrismItem",All,null,new[]{typeof(int)},null);
+        var prismNative=Read(prism);
+        Check(prism.ReturnType==typeof(void),"Native PrismItem is synchronous void, not a queued conversion coroutine");
+        Check(!inventoryGame.GetNestedTypes(All).Any(t=>t.Name.StartsWith("<PrismItem>",StringComparison.Ordinal)),"Native PrismItem has no iterator requiring an additional queued guard");
+        Check(prismNative.Count(i=>Call(i,"GameScript","Prismer"))==1,"Prism conversion retains native mode exit");
+        Check(prismNative.Where((i,index)=>i.opcode==OpCodes.Div && index>0 && prismNative[index-1].opcode==OpCodes.Ldc_I4_S
+                && Convert.ToInt32(prismNative[index-1].operand)==10).Count()==1 && prismNative.Count(i=>i.opcode==OpCodes.Mul)==1
+            && prismNative.Count(i=>i.opcode==OpCodes.Sub)==1 && prismNative.Count(i=>i.opcode==OpCodes.Ldc_I4_S && Convert.ToInt32(i.operand)==10)==2,
+            "Native Prism conversion divides quantity by ten and subtracts converted batches times ten");
+        Check(prismNative.Any(i=>i.opcode==OpCodes.Stfld && i.operand is FieldInfo f && f.Name=="holdingItem"),
+            "Native Prism conversion produces held output rather than replacing the input slot");
+        FieldInfo slotID=inventoryGame.GetField("slotID",All);
+        Check(slotID!=null && slotID.IsPrivate && slotID.FieldType==typeof(int),"Native private slotID exists for loader recipe lookup");
+        string patches=Path.Combine(ModDirectory(),"..","..","GameReference","Generated","GadgetCore","GadgetCore.Patches");
+        string prismRecipeSource=File.ReadAllText(Path.Combine(patches,"Patch_GameScript_PrismItem.cs"));
+        Check(prismRecipeSource.Contains("[HarmonyPatch(\"PrismItem\")]") && prismRecipeSource.Contains("prismForgeRecipes.ContainsKey(___inventory[___slotID].id)")
+            && prismRecipeSource.Contains("___inventory[___slotID].q >= num"),"Verified loader recipe source validates selected private slotID and required quantity");
+        Check(prismRecipeSource.Contains("___inventory[slot].q / num") && prismRecipeSource.Contains("___inventory[slot].q -= num2 * 10"),
+            "Verified loader recipe source uses configured divisor but fixed ten-item consumption");
+        Check(prismRecipeSource.Contains("___prismAgain = false;") && prismRecipeSource.Contains("___holdingItem = new Item("),
+            "Verified loader recipe source exits conversion mode and generates held output");
+        string loaderUpdate=File.ReadAllText(Path.Combine(patches,"Patch_GameScript_Update.cs"));
+        Check(loaderUpdate.Contains("new CodeInstruction(OpCodes.Call, \"Void PrismItem(Int32)\")")
+            && loaderUpdate.Contains("cILProcessor.RemoveInsns(iLRef2.GetRefByOffset(-20), 17)"),
+            "Verified loader Update transpiler removes native vanilla-only Prism recipe eligibility block");
         MethodBase[] sourceTargets=Targets("InventorySourcePatch");
         foreach(string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage"})
             Check(sourceTargets.Contains(inventoryGame.GetMethod(name,All,null,new[]{typeof(int)},null)),"Exact source tracking targets "+name);
@@ -147,6 +184,8 @@ internal static class Program
         }
         Check(updatePatched.Count(i=>Call(i,"ControllerSupport.ControllerGameplayInput","GameDroidButtonDown"))==1,"Droid instance adapter remains targeted");
         Check(updatePatched.Count==updateNative.Count+1,"only Droid receiver argument changes native update length");
+        Check(updateNative.Count(i=>Call(i,"GameScript","PrismItem"))==1 && updatePatched.Count(i=>Call(i,"GameScript","PrismItem"))==1,
+            "Controller Update input adapter preserves native Prism conversion dispatch");
         Check(updateNative.Count(i=>Call(i,"GameScript","UseSkill"))==6&&updatePatched.Count(i=>Call(i,"GameScript","UseSkill"))==6,"six native chip actions retained");
         Check(updateNative.Count(i=>Call(i,"GameScript","UseItem"))==6&&updatePatched.Count(i=>Call(i,"GameScript","UseItem"))==6,"six native item actions retained");
         Console.WriteLine("Controller Support installed native IL and patch discovery: "+checks+" checks passed.");

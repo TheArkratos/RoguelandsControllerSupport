@@ -225,6 +225,17 @@ internal static class Program
         Tick(() => Button(2, true)); Check(game.menuTalking.Clicks == 0, "unbound Interact remains disabled");
         Setup(); ControllerDialogueInput.Reset(); Tick(() => Button(2, true));
         Check(game.menuTalking.Clicks == 0, "unload resets input provider");
+        bool owns=true;ControllerInputOwnership.Configure(()=>owns);Setup();Tick();
+        Check(ControllerGameplayInput.IsActionConsumed("Interact"),"owned dialogue consumes only its binding");
+        owns=false;ControllerDialogueInput.Prepare(game);
+        Check(!ControllerGameplayInput.IsActionConsumed("Interact"),"same-frame handoff clears dialogue binding consumption");
+        Tick(()=>{Button(2,true);Input.Down.Add("Up");});
+        Check(game.menuTalking.Clicks==0&&game.Talks==0,"raw controller cannot reveal or advance keyboard-owned dialogue");
+        Check(ControllerGameplayInput.PlayerButtonDown("Up"),"native keyboard Up remains intact despite held raw X");
+        owns=true;Tick();Check(game.menuTalking.Clicks==0,"held dialogue action requires release after handoff");
+        Tick(()=>Button(2,false));Tick(()=>Button(2,true));
+        Check(game.menuTalking.Clicks==1,"fresh dialogue action rearms after release");
+        ControllerInputOwnership.Configure(()=>true);
         Console.WriteLine("PASS: " + checks + " dialogue input checks");
     }
 }

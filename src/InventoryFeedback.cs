@@ -26,6 +26,7 @@ namespace ControllerSupport
             string secondary, bool canTransfer, bool canDrop, Bounds? badgeBounds = null,
             string cancelLabel = null, Func<Bounds?> badgeProvider = null, bool storagePaging = false)
         {
+            if (!ControllerInputOwnership.UsingController) { ClearPresentation(); return; }
             game = current;
             selected = target;
             heldBadgeBounds = badgeBounds;
@@ -54,10 +55,17 @@ namespace ControllerSupport
 
         internal static void Reject(string reason)
         {
-            if (string.IsNullOrEmpty(reason)) return;
+            if (!ControllerInputOwnership.UsingController || string.IsNullOrEmpty(reason)) return;
             rejection = reason;
             rejectionUntil = Time.realtimeSinceStartup + 2f;
             EnsureRunner();
+        }
+
+        internal static void ClearPresentation()
+        {
+            game = null; selected = null; heldBadgeBounds = null;
+            heldBadgeProvider = null; controller = false;
+            hints = rejection = null; rejectionUntil = 0f;
         }
 
         internal static void Reset()
@@ -108,6 +116,7 @@ namespace ControllerSupport
 
             private void OnGUI()
             {
+                if (!ControllerInputOwnership.UsingController) { ClearPresentation(); return; }
                 if (!IsOpen()) return;
                 float scale = Mathf.Clamp(Mathf.Min(Screen.height / 720f,
                     Screen.width / 1280f), 0.75f, 2f);

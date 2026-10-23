@@ -190,6 +190,8 @@ namespace ControllerSupport
         internal UnityEngine.Collider ShowTarget;
         internal int HeldIconId;
         internal int HeldIconSetCount;
+        internal SelectionCornerStyle Style;
+        internal void SetStyle(SelectionCornerStyle style) { Style=style; }
         internal bool IsAlive { get { return true; } }
         internal static SelectionCornerRenderer TryCreate(float scale, int order,
             Action<string> warning)

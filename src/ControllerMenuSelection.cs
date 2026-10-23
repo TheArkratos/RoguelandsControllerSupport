@@ -34,6 +34,7 @@ namespace ControllerSupport
         private static GameScript preparedGame, selectionGame;
         private static int preparedFrame = -1;
         private static bool storageClick;
+        private static bool ownershipSuspended;
         private static int virtualButton = -1;
         private static Collider clickCollider;
         private static Vector3 lastPhysicalMouse;
@@ -77,13 +78,15 @@ namespace ControllerSupport
         }
 
         internal static bool InventoryActionsOwnInput
-        { get { return stateProvider != null && InventoryOpen(selectionGame); } }
+        { get { return OwnershipActive() && stateProvider != null && InventoryOpen(selectionGame); } }
 
         private static bool StorageOpen(GameScript game)
         { return InventoryOpen(game) && game.menuStorage && game.menuStorage.activeInHierarchy; }
 
         internal static void Prepare(GameScript game)
         {
+            InventoryNativeCursor.Update(game);
+            if (!OwnershipActive()) return;
             if (stateProvider == null || updateFailed || bindings == null) return;
             if (preparedGame == game && preparedFrame == Time.frameCount) return;
             EndNativeUpdate(); preparedGame = game; preparedFrame = Time.frameCount;
@@ -97,7 +100,8 @@ namespace ControllerSupport
                 GameObject pane = game != null && game.menuStorage && game.menuStorage.activeInHierarchy ? game.menuStorage : null;
                 if (pane == null && ItemConversionContext.IsOpen(game)) pane = ItemConversionContext.Root(game);
                 bool conversionMode = ItemConversionContext.ModeActive(game);
-                bool newlyOpen = selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || conversionModeContext != conversionMode;
+                bool newlyOpen = ownershipSuspended || selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || conversionModeContext != conversionMode;
+                ownershipSuspended = false;
                 conversionModeContext = conversionMode;
                 portalContext = portal; auxiliaryPane = pane;
                 selectionGame = open ? game : null;
@@ -332,6 +336,7 @@ namespace ControllerSupport
         // its own content normally. Physical mouse dispatch remains native.
         private static void UpdateNativeHoverTransition(GameScript game)
         {
+            if (!OwnershipActive()) return;
             bool open = !updateFailed && InventoryOpen(game);
             Collider next = open ? navigator.SelectedCollider : null;
             bool owns = open && controllerOwnsSelection;
@@ -347,8 +352,9 @@ namespace ControllerSupport
 
         internal static void Update(GameScript game)
         {
+            InventoryNativeCursor.Update(game);
             Prepare(game);
-            if (stateProvider == null || updateFailed) return;
+            if (!OwnershipActive() || stateProvider == null || updateFailed) return;
             try
             {
                 InventoryItemLifecycle.ClearIfEmpty(game);
@@ -392,6 +398,7 @@ namespace ControllerSupport
                 {
                     int id = controllerOwnsSelection && HasItem(held) ? held.id : 0;
                     if (id > 0) HideNativeHeldVisual(game); else RestoreNativeHeldVisual();
+                    renderer.SetStyle(ItemConversionContext.ActiveStyle(game));
                     renderer.SetHeldItemIcon(id, nativeHeldIconWidth, nativeHeldIconHeight);
                     renderer.Show(selected);
                 }
@@ -561,7 +568,7 @@ namespace ControllerSupport
         }
         internal static void NativeError(GameScript game, int code)
         {
-            if (!storageClick || !ReferenceEquals(game, preparedGame)) return;
+            if (!OwnershipActive() || !storageClick || !ReferenceEquals(game, preparedGame)) return;
             nativeErrorFrame = Time.frameCount;
             string reason = code == 3 || code == 7 ? "Not enough Credits" :
                 code == 8 ? "Not enough World Fragments" : code == 9 ? "This is not your ship" :
@@ -574,6 +581,7 @@ namespace ControllerSupport
 
         internal static void Reject(GameScript game, string reason)
         {
+            if (!OwnershipActive()) return;
             InventoryFeedback.Reject(string.IsNullOrEmpty(reason) ? "Item action unavailable" : reason);
             InventoryItemLifecycle.PlaySound(game,"Au/error");
         }
@@ -590,6 +598,7 @@ namespace ControllerSupport
         }
         internal static Vector3 VirtualMousePosition()
         {
+            if (!OwnershipActive()) return Input.mousePosition;
             Collider selected = storageClick ? clickCollider : navigator.SelectedCollider;
             if (InventoryOpen(selectionGame) && controllerOwnsSelection && selected && Camera.main &&
                 !Input.GetMouseButtonDown(0) && !Input.GetMouseButtonDown(1))
@@ -597,21 +606,47 @@ namespace ControllerSupport
             return Input.mousePosition;
         }
         internal static bool VirtualMouseButtonDown(int button)
-        { return Input.GetMouseButtonDown(button) || (storageClick && button == virtualButton && clickCollider &&
+        {
+            bool active = OwnershipActive();
+            return Input.GetMouseButtonDown(button) || (active && storageClick && button == virtualButton && clickCollider &&
             (button != 0 || !navigator.SelectedIsPortal || PortalMenuContext.NativeClickAllowed(preparedGame)) &&
-            !Input.GetMouseButtonDown(0) && !Input.GetMouseButtonDown(1)); }
+            !Input.GetMouseButtonDown(0) && !Input.GetMouseButtonDown(1));
+        }
         internal static int ExtraRowVirtualClickSlot(GameScript game)
         {
             Prepare(game);
-            return storageClick && clickCollider && navigator.SelectedSlot >= 81 && navigator.SelectedSlot <= 86 ?
+            return OwnershipActive() && storageClick && clickCollider && navigator.SelectedSlot >= 81 && navigator.SelectedSlot <= 86 ?
                 navigator.SelectedSlot - 51 : -1;
         }
         internal static bool ClosingStorageWouldDropHeldItem(GameScript game)
         { return StorageOpen(game) && HasItem(InventoryItemLifecycle.Held(game)); }
         internal static void PlaceHeldItemCursor(ActionCursor cursor)
         {
+            if (!OwnershipActive()) return;
             if (!InventoryOpen(selectionGame) || !controllerOwnsSelection) RestoreNativeHeldVisual();
             InventoryCursorPosition.Update(cursor, selectionGame, navigator.SelectedCollider, controllerOwnsSelection);
+        }
+        // Restoration is safe during mouse ownership; item provenance and any
+        // pending drop quarantine deliberately survive this presentation handoff.
+        private static bool OwnershipActive()
+        {
+            if (ControllerInputOwnership.UsingController) return true;
+            EndNativeUpdate(); RestoreNativeHeldVisual();
+            if (renderer != null) renderer.Hide();
+            InventoryFeedback.ClearPresentation();
+            if (!ownershipSuspended)
+            {
+                navigator.Reset();
+                Array.Clear(armed, 0, armed.Length);
+                Array.Clear(pagingArmed, 0, pagingArmed.Length);
+                repeating = false; repeatBlocked = true; repeatTarget = null;
+                actionFrame = nativeErrorFrame = -1;
+                hoverGame = null; hoverCollider = null; hoverControllerOwned = false;
+                preparedGame = null; preparedFrame = -1;
+            }
+            ownershipSuspended = true;
+            controllerOwnsSelection = false;
+            return false;
         }
         private static void HideNativeHeldVisual(GameScript game)
         {
@@ -638,11 +673,11 @@ namespace ControllerSupport
         }
         internal static void Reset()
         {
-            EndNativeUpdate(); RestoreNativeHeldVisual();
+            EndNativeUpdate(); RestoreNativeHeldVisual(); InventoryNativeCursor.Reset();
             stateProvider=null; usingControllerProvider=null; bindings=null; logWarning=null;
             preparedGame=selectionGame=null; preparedFrame=-1; Array.Clear(armed,0,armed.Length);
             Array.Clear(pagingArmed,0,pagingArmed.Length); pagingPlayer=null; pagingScene=-1;
-            sampledPhysicalMouse=controllerOwnsSelection=false; auxiliaryPane=null; portalContext=conversionModeContext=false;
+            sampledPhysicalMouse=controllerOwnsSelection=ownershipSuspended=false; auxiliaryPane=null; portalContext=conversionModeContext=false;
             hoverGame=null; hoverCollider=null; hoverControllerOwned=false;
             nativeHeldIconWidth=nativeHeldIconHeight=0f;
             repeatTarget=null; repeating=repeatBlocked=false; actionFrame=nativeErrorFrame=-1;

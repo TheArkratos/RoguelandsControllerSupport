@@ -62,7 +62,8 @@ namespace ControllerSupport
                     || name.StartsWith("CombineItem", StringComparison.Ordinal)
                     || name.StartsWith("ShiftClick", StringComparison.Ordinal)
                     || name == "ForgeEmblem"
-                    || name == "TrashItem";
+                    || name == "TrashItem"
+                    || name == "PrismItem";
                 ParameterInfo[] parameters = method.GetParameters();
                 if (mutation && parameters.Length == 1 && parameters[0].ParameterType == typeof(int))
                     yield return method;
@@ -185,6 +186,18 @@ namespace ControllerSupport
     [HarmonyPatch(typeof(GameScript), "Trash")]
     [HarmonyGadget("Controller Support")]
     public static class InventoryTrashContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance)
+        { InventoryItemLifecycle.ObserveContext(__instance); }
+    }
+}
+
+namespace ControllerSupport
+{
+    [HarmonyPatch(typeof(GameScript), "Prism")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryPrismContextPatch
     {
         [HarmonyPostfix]
         private static void Postfix(GameScript __instance)

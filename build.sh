@@ -32,6 +32,7 @@ dotnet "$csc_dll" \
     "$project_dir/src/RawJoystickEvent.cs" \
     "$project_dir/src/JoystickInputState.cs" \
     "$project_dir/src/LastInputSource.cs" \
+    "$project_dir/src/ControllerInputOwnership.cs" \
     "$project_dir/src/RawLinuxJoystickProbe.cs" \
     "$project_dir/src/InputProbe.cs" \
     "$project_dir/src/ControllerGameplayInput.cs" \
@@ -47,6 +48,8 @@ dotnet "$csc_dll" \
     "$project_dir/src/ExplorationTargetSelector.cs" \
     "$project_dir/src/ControllerExploration.cs" \
     "$project_dir/src/ControllerVisibleCursor.cs" \
+    "$project_dir/src/InventoryNativeCursor.cs" \
+    "$project_dir/src/SelectionCornerStyle.cs" \
     "$project_dir/src/SelectionCornerRenderer.cs" \
     "$project_dir/src/InventorySelectionNavigator.cs" \
     "$project_dir/src/PortalMenuContext.cs" \

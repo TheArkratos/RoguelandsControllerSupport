@@ -184,6 +184,8 @@ namespace ControllerSupport
     internal sealed class SelectionCornerRenderer
     {
         internal UnityEngine.Bounds? HeldItemBounds { get { return null; } }
+        internal SelectionCornerStyle Style;
+        internal void SetStyle(SelectionCornerStyle style) { Style=style; }
         internal bool IsAlive { get { return true; } }
         internal static SelectionCornerRenderer TryCreate(float scale, int order,
             Action<string> warning) { return new SelectionCornerRenderer(); }

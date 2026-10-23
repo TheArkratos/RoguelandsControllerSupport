@@ -8,6 +8,7 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/InventoryNativeCursor.cs" Link="InventoryNativeCursor.cs" />
     <Compile Include="../../src/ControllerAim.cs" Link="ControllerAim.cs" />
     <Compile Include="../../src/ControllerVisibleCursor.cs" Link="ControllerVisibleCursor.cs" />
     <Compile Include="../../src/JoystickInputState.cs" Link="JoystickInputState.cs" />

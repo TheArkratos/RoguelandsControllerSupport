@@ -44,6 +44,29 @@ internal static class Program {
  }
  private static GameObject[] RedGlyphs()=>UnityEngine.Object.FindObjectsOfType<GameObject>().Where(g=>g.name=="ControllerSupport.StaffTargetCrosshair").ToArray();
  private static void Main(){
+  // Exercise real effect/render entry points with shared mouse ownership while
+  // the raw controller remains connected and its aim stick remains held.
+  Setup();bool controllerOwner=true;ControllerInputOwnership.Configure(()=>controllerOwner);
+  var ownershipEnemy=Enemy(8,.4f);Physics.Candidates=new[]{ownershipEnemy};
+  var ownershipAttack=new AttackToken{Player=local};ControllerAimAssist.BeginAttack(ownershipAttack);
+  var ownershipStaff=SpawnStaff(10,Vector3.zero);StaffTick(ownershipStaff);
+  ControllerAim.TryWorldPoint(out _);controllerOwner=false;int ownershipSearches=Physics.Searches;
+  Input.mousePosition=new Vector3(45,35,0);
+  Check(Point().x==45&&!Menuu.usingController,"Shared false defeats cached attack aim immediately");
+  Check(StaffTick(ownershipStaff).x==45&&Physics.Searches==ownershipSearches,"Shared false stops existing staff steering and scans");
+  var ownershipIndicator=typeof(ControllerAimAssist).GetNestedType("AimAssistIndicator",BindingFlags.NonPublic);
+  var ownershipDraw=ownershipIndicator.GetMethod("OnGUI",BindingFlags.Instance|BindingFlags.NonPublic);
+  GUI.Draws=0;ownershipDraw.Invoke(Activator.CreateInstance(ownershipIndicator,true),null);
+  Check(GUI.Draws==0&&ControllerAimAssist.Enabled,"Shared false hides all assist rendering without disabling preference");
+  int ownershipLoads=Resources.Loads;var unownedAttack=new AttackToken{Player=local};ControllerAimAssist.BeginAttack(unownedAttack);
+  Check(ControllerAimAssist.Current==null&&ControllerAimAssist.Retained(unownedAttack)==null&&Physics.Searches==ownershipSearches,"Shared false creates no new attack assist token/search");
+  Check(Resources.Loads==ownershipLoads,"Shared false does not load equipped projectile prefab");
+  var unownedStaff=SpawnStaff(10,Vector3.zero);Check(ControllerAimAssist.Retained(unownedStaff)==null,"Shared false creates no new staff correlation");
+  controllerOwner=true;ControllerAim.Configure(()=>pad);Next();StaffTick(ownershipStaff);
+  Check(ControllerAimAssist.Retained(ownershipStaff).Target==ownershipEnemy,"Existing staff correlation resumes freshly after shared controller return");
+  var ownershipOld=ControllerAimAssist.Push(ControllerAimAssist.Retained(ownershipAttack));
+  Check(ControllerAimAssist.Current.Lost&&ControllerAimAssist.Current.Target==null&&Point().y==0,"Ordinary old attack target cannot resume after device handoff");ControllerAimAssist.Restore(ownershipOld);
+  ControllerInputOwnership.Configure(()=>true);
   Setup();var near=Enemy(8,.4f);var far=Enemy(14,0);Physics.Candidates=new Collider[]{far,near};Vector3 visual;ControllerAim.TryWorldPoint(out visual);
   Check(Physics.Searches==0&&ControllerAimAssist.SearchCount==0,"Enabled idle/visual aim never searches");Check(Point().y==0&&Physics.Searches==0,"Unscoped mouse adapter remains normal");
   var token=new AttackToken{Player=local};var old=ControllerAimAssist.Push(null);ControllerAimAssist.BeginAttack(token);
@@ -203,6 +226,11 @@ internal static class Program {
   liveStaff=SpawnStaff(10,new Vector3(20,0,0));local.attacking=false;GameScript.equippedIDs[0]=999;var staffPoint=StaffTick(liveStaff);var red=RedGlyphs().Single();var redMaterial=red.GetComponent<MeshRenderer>().sharedMaterial;
   Check(red.transform.position.x==staffPoint.x&&red.transform.position.y==staffPoint.y&&Math.Abs(red.transform.position.z+.43286f)<.00001,"Red staff glyph uses exact returned fallback world point with only native render-depth offset");
   Check(!ReferenceEquals(redMaterial,originalMaterial)&&ReferenceEquals(redMaterial.mainTexture,originalTexture)&&redMaterial.Tint.r==1&&redMaterial.Tint.g==0,"Red glyph owns tinted material while sharing exact native crosshair texture");
+  ControllerInputOwnership.Configure(()=>false);GUI.Draws=0;draw.Invoke(marker,null);
+  Check(GUI.Draws==0&&!red.activeInHierarchy&&ControllerAimAssist.Enabled,"Shared mouse ownership immediately hides existing staff glyph and debug graphics");
+  int unownedGlyphs=RedGlyphs().Length;StaffTargetCrosshair.Set(liveStaff,new Vector3(99,99,0));StaffTargetCrosshair.Refresh(true);
+  Check(RedGlyphs().Length==unownedGlyphs&&!red.activeInHierarchy,"Direct marker publication cannot bypass shared ownership");
+  ControllerInputOwnership.Configure(()=>true);ControllerAim.Configure(()=>pad);StaffTick(liveStaff);
   Check(ReferenceEquals(nativeGlyph.GetComponent<MeshRenderer>().sharedMaterial,originalMaterial)&&originalMaterial.Tint.r==0,"Native direction crosshair material is untouched");
   Check(red.GetComponent<ActionCursor>()==null&&red.GetComponentsInChildren<MeshRenderer>(true).Length==1&&red.GetComponent<MeshFilter>().sharedMesh==nativeGlyph.GetComponent<MeshFilter>().sharedMesh&&red.GetComponent<Animation>()!=null,"Only native mesh glyph and rotation animation are copied, excluding position updater and giant guides");
   UnityEngine.Object.Destroy(red);StaffTick(liveStaff);red=RedGlyphs().Single();Check(!redMaterial&&red&&ReferenceEquals(red.GetComponent<MeshRenderer>().sharedMaterial.mainTexture,originalTexture),"Destroyed glyph is rebuilt safely on next native tick and abandoned owned material is disposed");

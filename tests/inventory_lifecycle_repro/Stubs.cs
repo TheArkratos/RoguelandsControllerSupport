@@ -99,6 +99,9 @@ public class GameScript
     public UnityEngine.GameObject menuPlanets = new UnityEngine.GameObject { activeSelf = false };
     public UnityEngine.GameObject menuEmblemForge = new UnityEngine.GameObject { activeSelf = false };
     public UnityEngine.GameObject menuTrasher = new UnityEngine.GameObject { activeSelf = false };
+    public UnityEngine.GameObject menuPrism = new UnityEngine.GameObject { activeSelf = false };
+    public void Prism() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = menuTrasher.activeSelf = false; menuPrism.activeSelf = true; inventoryOpen = true; }
+    public void PrismItem(int slot) { int amount = inventory[slot].q / 10; inventory[slot].q -= amount * 10; holdingItem = new Item(inventory[slot].id + 3, amount); }
     public void Trash() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = false; menuTrasher.activeSelf = true; inventoryOpen = true; }
     public void TrashItem(int slot) { inventory[slot] = new Item(52, inventory[slot].q * 2); }
     public void Planets() { menuStorage.activeSelf = false; menuPlanets.activeSelf = true; inventoryOpen = true; }

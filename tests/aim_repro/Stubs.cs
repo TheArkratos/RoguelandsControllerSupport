@@ -66,10 +66,15 @@ namespace UnityEngine
     public class GameObject
     {
         public string name;
+        public bool activeInHierarchy=true;
+        public T[] GetComponentsInChildren<T>(bool includeInactive) { return new T[0]; }
         public Transform transform = new Transform();
         public static implicit operator bool(GameObject obj) { return obj != null; }
         public T GetComponent<T>() where T : class { return new NetworkView() as T; }
     }
+
+    public class Renderer { public bool enabled=true; public static implicit operator bool(Renderer obj) { return obj!=null; } }
+    public class Light { public bool enabled=true; public static implicit operator bool(Light obj) { return obj!=null; } }
 
     public class MonoBehaviour
     {
@@ -88,8 +93,9 @@ public static class ControllerCursor
     public static float staticX, staticY;
 }
 
-public static class GameScript
+public class GameScript
 {
+    public UnityEngine.GameObject cursorTrasher,cursorEmblemForge,cursorPrism;
     public static bool combatMode = true, dead, pausing, buildMode, inventoryOpen, talking;
 }
 

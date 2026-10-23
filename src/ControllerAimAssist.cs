@@ -68,7 +68,17 @@ namespace ControllerSupport
             Configure();
             if(!Enabled) Toggle();
         }
-        private static void LoseOwnership() { if(current!=null) Lost(current,"controller ownership"); }
+        private static void LoseOwnership()
+        {
+            // Keep neutral staff/projectile correlation for a later controller
+            // return, but never retain a target or visible effect across devices.
+            foreach(Entry token in tokens)
+                if(token.Attack!=null) { Lost(token.Attack,"controller ownership"); token.Attack.Target=null; }
+            if(current!=null) { Lost(current,"controller ownership"); current.Target=null; }
+            ClearAppliedVisual();
+            motion.Clear();
+            StaffTargetCrosshair.Refresh(false);
+        }
         internal static void Toggle()
         {
             Configure(); Enabled=!Enabled;
@@ -105,6 +115,7 @@ namespace ControllerSupport
         internal static void Retain(object owner,Attack attack)
         {
             if(owner==null) return;
+            if(!ControllerInputOwnership.UsingController) return;
             for(int i=tokens.Count-1;i>=0;i--)
             {
                 object found=tokens[i].Owner.Target;
@@ -140,6 +151,7 @@ namespace ControllerSupport
         }
         internal static void BeginAttack(object iterator)
         {
+            if(!ControllerInputOwnership.UsingController) { LoseOwnership(); current=null; return; }
             // Injected immediately after native attacking=true, beyond its guards.
             PlayerScript player=IteratorPlayer(iterator);
             bool local=Local(player);
@@ -165,14 +177,14 @@ namespace ControllerSupport
         }
         internal static void CaptureStaff(Projectile projectile,PlayerScript owner)
         {
-            if(!projectile || !Local(owner)) return;
+            if(!ControllerInputOwnership.UsingController || !projectile || !Local(owner)) return;
             Retain(projectile,new Attack { Staff=projectile,Owner=owner,TraceId=++nextTraceId });
         }
         internal static bool StaffDisplayOwned(Projectile projectile)
         {
             Attack token=Retained(projectile);
             FieldInfo controller=typeof(Projectile).GetField("isController",BindingFlags.Instance|BindingFlags.NonPublic);
-            return projectile && token!=null && Local(token.Owner) && controller!=null && (bool)controller.GetValue(projectile);
+            return ControllerInputOwnership.UsingController && projectile && token!=null && Local(token.Owner) && controller!=null && (bool)controller.GetValue(projectile);
         }
         private static Vector2 TargetVelocity(Collider target)
         {
@@ -207,6 +219,7 @@ namespace ControllerSupport
         }
         internal static Attack Acquire()
         {
+            if(!ControllerInputOwnership.UsingController) { LoseOwnership(); return null; }
             var attack=new Attack { TraceId=++nextTraceId }; Vector3 aim;
             if(!Enabled) { Log("attack="+attack.TraceId+" Acquire exit=disabled"); return attack; }
             if(!SafeGameplay())
@@ -362,6 +375,7 @@ namespace ControllerSupport
         }
         internal static Vector3 Resolve(Vector3 normal)
         {
+            if(!ControllerInputOwnership.UsingController) { LoseOwnership(); return normal; }
             Attack attack=current;
             if(!Enabled || attack==null || attack.Lost) return normal;
             if(!SafeGameplay()) { Lost(attack,"unsafe gameplay"); return normal; }
@@ -385,6 +399,7 @@ namespace ControllerSupport
         // Each projectile keeps its own token and independently re-ranks per tick.
         internal static Vector3 StaffMousePosition()
         {
+            if(!ControllerInputOwnership.UsingController) { LoseOwnership(); return Input.mousePosition; }
             Attack staff=current; Vector3 visual;
             if(staff==null || !staff.Staff || !Local(staff.Owner))
             { if(staff!=null) StaffTargetCrosshair.Hide(staff.Staff); return Input.mousePosition; }
@@ -395,7 +410,9 @@ namespace ControllerSupport
             staff.Target=null; staff.Lost=false;
             if(Enabled)
             {
-                Attack selection=Acquire(); staff.Target=selection.Target;
+                Attack selection=Acquire();
+                if(selection==null) return Input.mousePosition;
+                staff.Target=selection.Target;
                 if(staff.Target)
                 {
                     float speed=staff.Staff.speed+(staff.Staff.isSwathe?10f:0f);
@@ -472,6 +489,7 @@ namespace ControllerSupport
         {
             private void LateUpdate()
             {
+                if(!ControllerInputOwnership.UsingController) { LoseOwnership(); return; }
                 Vector3 visual;
                 StaffTargetCrosshair.Refresh(Enabled && SafeGameplay() && ControllerAim.TryWorldPoint(out visual));
             }
@@ -480,6 +498,7 @@ namespace ControllerSupport
                 LateUpdate();
                 // The marker represents the enabled setting, independently of
                 // whether the stick currently owns aim or an attack has a target.
+                if(!ControllerInputOwnership.UsingController) { LoseOwnership(); return; }
                 if(!Enabled || !SafeGameplay() || !Camera.main) { ClearAppliedVisual(); return; }
                 Vector3 point=Camera.main.WorldToScreenPoint(PlayerCenter());
                 if(point.z<=0) return;

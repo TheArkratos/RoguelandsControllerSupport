@@ -190,6 +190,26 @@ internal static class Program
         Time.frameCount++;
         if (!ControllerGameplayInput.GameButtonDown("CombatMode"))
             throw new Exception("Configured Y mode toggle was lost.");
+        bool owns=true;ControllerInputOwnership.Configure(()=>owns);
+        input=Fresh();
+        input.Apply(new RawJoystickEvent { Type=2,Number=5,Value=32767 });
+        Time.frameCount++;
+        if (!ControllerGameplayInput.ExplorationPrimaryPressed())
+            throw new Exception("Neutral ownership then fresh RT must request a droid.");
+        owns=false;Input.Down.Add("Jump");Input.Down.Add("Cancel");
+        if (ControllerGameplayInput.ExplorationPrimaryPressed() || ControllerGameplayInput.ExplorationPrimaryHeld() ||
+            !ControllerGameplayInput.PlayerButtonDown("Jump") || !ControllerGameplayInput.GameButtonDown("Cancel"))
+            throw new Exception("Keyboard handoff leaked cached primary or suppressed native input.");
+        owns=true;Time.frameCount++;input.BeginFrame();Input.Down.Clear();
+        if (ControllerGameplayInput.ExplorationPrimaryPressed() || ControllerGameplayInput.ExplorationPrimaryHeld())
+            throw new Exception("Held RT rearmed across controller ownership handoff.");
+        input.Apply(new RawJoystickEvent { Type=2,Number=5,Value=-32768 });
+        Time.frameCount++;ControllerGameplayInput.ExplorationPrimaryHeld();
+        input.BeginFrame();input.Apply(new RawJoystickEvent { Type=2,Number=5,Value=32767 });
+        Time.frameCount++;
+        if (!ControllerGameplayInput.ExplorationPrimaryPressed())
+            throw new Exception("Release and fresh RT failed to rearm after handoff.");
+        ControllerInputOwnership.Configure(()=>true);
         Console.WriteLine("Vanilla joystick conflicts suppressed; keyboard and configured actions preserved.");
     }
 
@@ -211,6 +231,11 @@ internal static class Program
         input.Connect();
         ControllerGameplayInput.Configure(() => input,
             BindingConfig.Parse(BindingConfig.DefaultText.Split('\n')));
+        // Establish controller ownership with a sampled neutral frame before
+        // tests emit a genuinely fresh edge. A held trigger on first observation
+        // is deliberately disarmed during ownership/configuration handoff.
+        Time.frameCount++;
+        ControllerGameplayInput.PlayerAxis("Attack");
         return input;
     }
 

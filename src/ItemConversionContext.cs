@@ -10,27 +10,33 @@ namespace ControllerSupport
     internal static class ItemConversionContext
     {
         internal const int ToggleSlot = 130;
+        private enum Kind { Emblem, Trasher, Prism }
         private sealed class Context
         {
             internal readonly FieldInfo Pane, Mode, Again;
             internal readonly MethodInfo Toggle;
             internal readonly string Button, Verb;
-            internal readonly bool IsTrasher;
-            internal Context(string pane, string mode, string again, string toggle, string button, string verb, bool trasher)
+            internal readonly Kind Conversion;
+            internal readonly SelectionCornerStyle Style;
+            internal readonly FieldInfo Recipes;
+            internal Context(string pane, string mode, string again, string toggle, string button, string verb,
+                Kind conversion, SelectionCornerStyle style)
             {
                 Pane=Field(pane); Mode=Field(mode); Again=Field(again);
                 Toggle=typeof(GameScript).GetMethod(toggle,BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic);
-                Button=button; Verb=verb; IsTrasher=trasher;
+                Button=button; Verb=verb; Conversion=conversion; Style=style;
+                string recipes=conversion==Kind.Prism ? "prismForgeRecipes" : "emblemForgeRecipes";
+                Recipes=conversion==Kind.Trasher ? null : typeof(GadgetCoreAPI).GetField(recipes,
+                    BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public);
             }
             internal GameObject Root(GameScript game)
             { return game!=null && Pane!=null ? Pane.GetValue(game) as GameObject : null; }
         }
         private static readonly Context[] Contexts = {
-            new Context("menuEmblemForge","emblemForging","emblemAgain","EmblemForging","bEmblem","forging",false),
-            new Context("menuTrasher","trashing","trashAgain","Trasher","bTrasher","trashing",true)
+            new Context("menuEmblemForge","emblemForging","emblemAgain","EmblemForging","bEmblem","forging",Kind.Emblem,SelectionCornerStyle.Blue),
+            new Context("menuTrasher","trashing","trashAgain","Trasher","bTrasher","trashing",Kind.Trasher,SelectionCornerStyle.Red),
+            new Context("menuPrism","prisming","prismAgain","Prismer","bPrism","prism forging",Kind.Prism,SelectionCornerStyle.Purple)
         };
-        private static readonly FieldInfo Recipes = typeof(GadgetCoreAPI).GetField("emblemForgeRecipes",
-            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         private static FieldInfo Field(string name)
         { return typeof(GameScript).GetField(name,BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic); }
         private static Context Active(GameScript game)
@@ -48,6 +54,13 @@ namespace ControllerSupport
         internal static bool IsOpen(GameScript game) { return Active(game)!=null; }
         internal static bool ModeActive(GameScript game)
         { Context context=Active(game); return context!=null && context.Mode!=null && (bool)context.Mode.GetValue(game); }
+        internal static SelectionCornerStyle ActiveStyle(GameScript game)
+        {
+            Context context=Active(game);
+            if(context==null || context.Mode==null || !(bool)context.Mode.GetValue(game))
+                return SelectionCornerStyle.Normal;
+            return context.Style;
+        }
         internal static Collider CollectTarget(GameScript game)
         { Context context=Active(game); return context==null ? null : Find(context.Root(game).transform,context.Button); }
         private static Collider Find(Transform parent,string button)
@@ -77,14 +90,14 @@ namespace ControllerSupport
                 if(held!=null && held.id>0 && held.q>0) reason="Place or drop the held item first";
             }
             else if(!ModeActive(game)) reason="Enable "+context.Verb+" first";
-            // Hotkeys/equipment require separate side-effect coverage. Both
+            // Hotkeys/equipment require separate side-effect coverage. All
             // contexts deliberately support backpack conversion only for now.
             else if(!(selection>=6&&selection<=35)) reason="Select a backpack item for "+context.Verb;
             else
             {
                 Item held=InventoryItemLifecycle.Held(game);
                 if(held!=null && held.id>0 && held.q>0) reason="Cancel "+context.Verb+" before placing the held item";
-                else if(context.IsTrasher)
+                else if(context.Conversion==Kind.Trasher)
                 {
                     if(target==null || target.id<=0 || target.q<=0) reason="Select an item to convert";
                     else if(target.id==51 || target.id==52) reason="This item cannot be converted to Credits";
@@ -92,10 +105,10 @@ namespace ControllerSupport
                     // TrashItem evaluates effective values only on activation.
                 }
                 else if(target==null || target.id<=0 || target.q<10) reason="Forging needs at least 10 eligible items";
-                else if(Recipes==null) reason="Forge recipes unavailable";
+                else if(context.Recipes==null) reason="Forge recipes unavailable";
                 else
                 {
-                    IDictionary recipes=Recipes.GetValue(null) as IDictionary;
+                    IDictionary recipes=context.Recipes.GetValue(null) as IDictionary;
                     if(recipes==null) reason="Forge recipes unavailable";
                     else if(recipes.Contains(target.id))
                     {
@@ -107,7 +120,8 @@ namespace ControllerSupport
                         else if((int)count.GetValue(recipe,null)!=10) reason="This recipe uses an unsafe forge quantity";
                         else if((int)output.GetValue(recipe,null)<=0) reason="Forge recipe has no valid output";
                     }
-                    else if(target.id>40) reason="This item has no emblem recipe";
+                    else if(context.Conversion==Kind.Prism ? target.id<86 || target.id>88 : target.id>40)
+                        reason=context.Conversion==Kind.Prism ? "This item has no prism recipe" : "This item has no emblem recipe";
                 }
             }
             return reason==null;
@@ -127,7 +141,8 @@ namespace ControllerSupport
         {
             Context context=Active(game); if(context==null) return null;
             return selection==ToggleSlot ? ModeActive(game)?CancelLabel(game):"Enable "+context.Verb
-                : context.IsTrasher?"Convert to Credits":"Forge emblems";
+                : context.Conversion==Kind.Trasher?"Convert to Credits"
+                : context.Conversion==Kind.Prism?"Forge prisms":"Forge emblems";
         }
     }
 }

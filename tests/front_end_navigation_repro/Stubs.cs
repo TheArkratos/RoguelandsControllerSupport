@@ -145,6 +145,8 @@ namespace ControllerSupport
     }
     internal class SelectionCornerRenderer
     {
+        internal SelectionCornerStyle Style;
+        internal void SetStyle(SelectionCornerStyle style) { Style=style; }
         public bool IsAlive { get { return true; } }
         public static SelectionCornerRenderer TryCreate(float scale, int order, Action<string> warn)
         { return new SelectionCornerRenderer(); }

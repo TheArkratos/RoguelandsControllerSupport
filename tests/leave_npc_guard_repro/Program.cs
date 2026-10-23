@@ -59,6 +59,14 @@ internal static class Program
         Expect("prefix is first-priority before GadgetCore menu close",
             priority != null && priority.Value == HarmonyLib.Priority.First);
 
+        int lifecycleCalls=InventoryItemLifecycle.LeaveRangeCalls;
+        ControllerInputOwnership.Configure(()=>false);
+        game.StorageOpen=true;game.SetHeld(21);
+        Leave(game);
+        Expect("keyboard ownership uses exact native LeaveNPC and never starts controller item recovery",
+            InventoryItemLifecycle.LeaveRangeCalls==lifecycleCalls && game.DropCalls==2 && !game.HasHeld);
+        ControllerInputOwnership.Configure(()=>true);
+
         Console.WriteLine(checks + " checks; " + failures + " failures");
         return failures == 0 ? 0 : 1;
     }

@@ -157,6 +157,26 @@ internal static class Program
             SelectionCornerRenderer.Latest.HeldIconId == 0);
         Expect("closing chest restores native held graphic", ScaleIs(NativeScale));
 
+        // Actual controller presentation -> global ownership loss -> native
+        // mouse pickup lifecycle. Restoration must precede a new native pickup.
+        Setup(); controllerSource = true;
+        game.SetHeldItem(21); Frame(inventorySlot); StableFrame();
+        Expect("controller prerequisite hides native held object", ScaleIs(Vector3.zero));
+        ControllerInputOwnership.Configure(() => false);
+        ControllerMenuSelection.PlaceHeldItemCursor(null);
+        Expect("same-frame mouse handoff restores held native scale", ScaleIs(NativeScale));
+        Expect("same-frame mouse handoff hides every custom held badge",
+            SelectionCornerRenderer.Latest.HeldIconId == 0 && SelectionCornerRenderer.Latest.ShowTarget == null);
+        game.SetHeldItem(0); game.holdingItemObj.SetActive(false);
+        game.SetHeldItem(53); game.holdingItemObj.SetActive(true);
+        StableFrame();
+        Expect("native refresh after mouse pickup retains visible native scale", ScaleIs(NativeScale));
+        ControllerInputOwnership.Configure(() => true);
+        StableFrame();
+        Expect("controller reclaim hides only native art and restores selected badge",
+            ScaleIs(Vector3.zero) && SelectionCornerRenderer.Latest.HeldIconId == 53);
+        ControllerMenuSelection.Reset();
+
         Console.WriteLine(checks + " checks; " + failures + " failures");
         return failures == 0 ? 0 : 1;
     }

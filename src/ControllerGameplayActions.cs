@@ -48,6 +48,14 @@ namespace ControllerSupport
 
         internal static void Prepare(GameScript game)
         {
+            if (!ControllerInputOwnership.UsingController)
+            {
+                Array.Clear(queued, 0, queued.Length);
+                Array.Clear(armed, 0, armed.Length);
+                previouslyAllowed = false;
+                frame = -1;
+                return;
+            }
             if (frame == Time.frameCount) return;
             frame = Time.frameCount;
             Array.Clear(queued, 0, queued.Length);
@@ -85,6 +93,14 @@ namespace ControllerSupport
 
         internal static bool HotkeyPressed(int slot)
         {
+            if (!ControllerInputOwnership.UsingController)
+            {
+                Array.Clear(queued, 0, queued.Length);
+                Array.Clear(armed, 0, armed.Length);
+                previouslyAllowed = false;
+                frame = -1;
+                return false;
+            }
             if (slot < 0 || slot >= queued.Length || frame != Time.frameCount ||
                 !queued[slot] || ControllerGameplayInput.IsActionConsumed(Actions[slot + 1]) || player != MenuScript.player || scene != Application.loadedLevel ||
                 previousCombat != GameScript.combatMode || !Available(owner)) return false;
@@ -94,7 +110,7 @@ namespace ControllerSupport
 
         private static bool Available(GameScript game)
         {
-            if (game == null || blockedFrame == Time.frameCount || GameScript.inventoryOpen ||
+            if (!ControllerInputOwnership.UsingController || game == null || blockedFrame == Time.frameCount || GameScript.inventoryOpen ||
                 GameScript.pausing || GameScript.dead || GameScript.buildMode ||
                 PlayerScript.beaming || !MenuScript.player || GadgetCoreAPI.IsInputFrozen()) return false;
             NetworkView view = MenuScript.player.GetComponent<NetworkView>();

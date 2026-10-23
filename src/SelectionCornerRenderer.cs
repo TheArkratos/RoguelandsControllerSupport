@@ -32,6 +32,8 @@ namespace ControllerSupport
         private readonly SpriteRenderer[] renderers;
         private readonly Sprite[] sprites;
         private readonly Texture2D[] textures;
+        private readonly Color[] normalCornerColors;
+        private readonly Vector3[] normalCornerScales;
         private readonly SpriteRenderer heldIconRenderer;
         // The game's item material owns its texture. Only the Sprite wrapper is ours.
         private Sprite heldIconSprite;
@@ -65,6 +67,13 @@ namespace ControllerSupport
             this.sprites = sprites;
             this.textures = textures;
             this.heldIconRenderer = heldIconRenderer;
+            normalCornerColors = new Color[renderers.Length];
+            normalCornerScales = new Vector3[renderers.Length];
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                normalCornerColors[i] = renderers[i].color;
+                normalCornerScales[i] = renderers[i].transform.localScale;
+            }
         }
 
         // pixelsPerUnit sets the six-pixel corner's world size; the caller should
@@ -122,6 +131,25 @@ namespace ControllerSupport
                 if (root != null) UnityEngine.Object.Destroy(root);
                 DestroyAssets(sprites, textures);
                 return null;
+            }
+        }
+
+        // Scale only the four corner glyphs about their existing outer pivots.
+        // The selection bounds, root and held-item badge keep their exact geometry.
+        // Always derive from captured defaults so repeated frames cannot compound.
+        internal void SetStyle(SelectionCornerStyle style)
+        {
+            if (disposed || root == null) return;
+            bool active = style != SelectionCornerStyle.Normal;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Color normal = normalCornerColors[i];
+                Vector3 scale = normalCornerScales[i];
+                renderers[i].color = style == SelectionCornerStyle.Red ? new Color(1f, 0f, 0f, normal.a)
+                    : style == SelectionCornerStyle.Blue ? new Color(0f, 0f, 1f, normal.a)
+                    : style == SelectionCornerStyle.Purple ? new Color(0.65f, 0.15f, 1f, normal.a) : normal;
+                renderers[i].transform.localScale = active
+                    ? new Vector3(scale.x * 1.5f, scale.y * 1.5f, scale.z) : scale;
             }
         }
 
@@ -207,6 +235,7 @@ namespace ControllerSupport
 
         internal void Hide()
         {
+            SetStyle(SelectionCornerStyle.Normal);
             if (!disposed && root != null && root.activeSelf) root.SetActive(false);
         }
 

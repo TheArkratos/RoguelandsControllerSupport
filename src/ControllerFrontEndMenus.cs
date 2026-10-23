@@ -30,6 +30,7 @@ namespace ControllerSupport
         private static bool sampledMouse;
         private static bool controllerOwns;
         private static bool activateArmed;
+        private static bool cancelArmed;
         private static bool syntheticClick;
         private static bool failed;
         private static int heldDirection;
@@ -65,6 +66,7 @@ namespace ControllerSupport
             sampledMouse = false;
             controllerOwns = false;
             activateArmed = false;
+            cancelArmed = false;
             syntheticClick = false;
             failed = false;
             heldDirection = 0;
@@ -156,6 +158,7 @@ namespace ControllerSupport
             string[] names, bool stuffGrid)
         {
             activeNativeUpdate = false;
+            if (!OwnershipActive()) return;
             if (failed || stateProvider == null || bindings == null || !root ||
                 Camera.main == null)
             {
@@ -178,6 +181,7 @@ namespace ControllerSupport
                     sampledMouse = false;
                     controllerOwns = false;
                     activateArmed = false;
+                    cancelArmed = false;
                     heldDirection = 0;
                 }
                 if (!Contains(selected)) selected = choices.Count > 0 ? choices[0] : null;
@@ -213,6 +217,9 @@ namespace ControllerSupport
                 JoystickInputState state = stateProvider();
                 bool connected = state != null && state.Connected;
                 bool held = connected && BoundHeld(state, "MenuActivate");
+                bool cancelHeld = connected && BoundHeld(state, "MenuCancel");
+                if (changed) cancelArmed = !cancelHeld;
+                else if (!cancelHeld) cancelArmed = true;
                 if (!held) activateArmed = true;
                 int rawDirection = connected ? Direction(state) : 0;
                 if (changed) navigationRequiresRelease = rawDirection != 0;
@@ -247,6 +254,7 @@ namespace ControllerSupport
                         controllerOwns = true;
                         syntheticClick = true;
                         activateArmed = false;
+                    cancelArmed = false;
                     }
                 }
                 ShowCorners();
@@ -268,6 +276,7 @@ namespace ControllerSupport
         // Transpiler replacements affect only the three explicitly patched Updates.
         internal static Vector3 MousePosition()
         {
+            if (!OwnershipActive()) return Input.mousePosition;
             if (activeNativeUpdate && controllerOwns && Contains(selected) &&
                 !Input.GetMouseButtonDown(0) && !Input.GetMouseButtonDown(1))
                 return Camera.main.WorldToScreenPoint(selected.bounds.center);
@@ -276,6 +285,7 @@ namespace ControllerSupport
 
         internal static bool MouseButtonDown(int button)
         {
+            if (!OwnershipActive()) return Input.GetMouseButtonDown(button);
             return Input.GetMouseButtonDown(button) ||
                 (button == 0 && activeNativeUpdate && syntheticClick && Contains(selected)) ||
                 ControllerMenuSelection.VirtualMouseButtonDown(button);
@@ -287,6 +297,7 @@ namespace ControllerSupport
         internal static bool ButtonDown(string name)
         {
             bool native = Input.GetButtonDown(name);
+            if (!OwnershipActive()) return native;
             if (name != "Cancel" || !activeNativeUpdate || failed || bindings == null || stateProvider == null)
                 return native;
             JoystickInputState state = stateProvider();
@@ -294,7 +305,9 @@ namespace ControllerSupport
             // Keep Escape even if a physical B press occurs on the same frame.
             bool keyboard = Input.GetKeyDown(KeyCode.Escape) ||
                 (native && !state.ButtonHeld(1) && !state.ButtonPressed(1));
-            return keyboard || BoundPressed(state, "MenuCancel");
+            bool cancel = cancelArmed && BoundPressed(state, "MenuCancel");
+            if (cancel) cancelArmed = false;
+            return keyboard || cancel;
         }
 
         private static void Collect(GameObject root, string[] names, bool stuffGrid)
@@ -523,6 +536,14 @@ namespace ControllerSupport
             return gameObject && gameObject.activeInHierarchy;
         }
 
+        private static bool OwnershipActive()
+        {
+            if (ControllerInputOwnership.UsingController) return true;
+            activeNativeUpdate = false;
+            Clear();
+            return false;
+        }
+
         private static void Clear()
         {
             RestoreCharacterHitbox();
@@ -533,6 +554,7 @@ namespace ControllerSupport
             controllerOwns = false;
             syntheticClick = false;
             activateArmed = false;
+            cancelArmed = false;
             heldDirection = 0;
             navigationRequiresRelease = false;
             if (corners != null) corners.Hide();

@@ -8,6 +8,7 @@
     <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/SelectionCornerStyle.cs" Link="SelectionCornerStyle.cs" />
     <Compile Include="../../src/BindingConfig.cs" Link="BindingConfig.cs" />
     <Compile Include="../../src/InventorySelectionNavigator.cs" Link="InventorySelectionNavigator.cs" />
     <Compile Include="../../src/ControllerMenuSelection.cs" Link="ControllerMenuSelection.cs" />
