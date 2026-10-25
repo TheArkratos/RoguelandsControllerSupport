@@ -24,7 +24,7 @@ namespace ControllerSupport
         internal static void SetContext(GameScript current, Collider target,
             bool controllerActive, BindingConfig bindings, string primary,
             string secondary, bool canTransfer, bool canDrop, Bounds? badgeBounds = null,
-            string cancelLabel = null, Func<Bounds?> badgeProvider = null, bool storagePaging = false)
+            string cancelLabel = null, Func<Bounds?> badgeProvider = null, bool storagePaging = false, bool recipePaging = false)
         {
             if (!ControllerInputOwnership.UsingController) { ClearPresentation(); return; }
             game = current;
@@ -37,17 +37,21 @@ namespace ControllerSupport
             if (controllerActive)
             {
                 StringBuilder text = new StringBuilder();
-                Append(text, bindings, "MenuActivate", primary, storagePaging);
-                Append(text, bindings, "MenuSecondary", secondary, storagePaging);
-                if (canTransfer) Append(text, bindings, "MenuTransfer", "Transfer", storagePaging);
-                if (canDrop) Append(text, bindings, "MenuDrop", "Drop", storagePaging);
+                Append(text, bindings, "MenuActivate", primary, storagePaging, recipePaging);
+                Append(text, bindings, "MenuSecondary", secondary, storagePaging, recipePaging);
+                if (canTransfer) Append(text, bindings, "MenuTransfer", "Transfer", storagePaging, recipePaging);
+                if (canDrop) Append(text, bindings, "MenuDrop", "Drop", storagePaging, recipePaging);
                 if (storagePaging)
                 {
                     if (text.Length > 0) text.Append("   ·   ");
                     text.Append("LB Previous page   ·   RB Next page");
                 }
-                Item held = HeldItem();
-                Append(text, bindings, "MenuCancel", cancelLabel ?? (held != null && held.id > 0 && held.q > 0 ? "Return" : "Close"), storagePaging);
+                if (recipePaging)
+                {
+                    Append(text, bindings, "MenuPreviousPage", "Previous page", false, true);
+                    Append(text, bindings, "MenuNextPage", "Next page", false, true);
+                }
+                Append(text, bindings, "MenuCancel", cancelLabel ?? (CombatChipMenuContext.HasHeldItem(game) ? "Return" : "Close"), storagePaging, recipePaging);
                 hints = text.ToString();
             }
             EnsureRunner();
@@ -82,10 +86,16 @@ namespace ControllerSupport
         }
 
         private static void Append(StringBuilder text, BindingConfig bindings,
-            string action, string label, bool storagePaging = false)
+            string action, string label, bool storagePaging = false, bool recipePaging = false)
         {
             if (string.IsNullOrEmpty(label) || bindings[action] == "Unbound") return;
             if (storagePaging && (bindings[action] == "Joystick1Button4" || bindings[action] == "Joystick1Button5")) return;
+            if (recipePaging && action != "MenuPreviousPage" && action != "MenuNextPage")
+            {
+                string token = bindings[action];
+                if ((bindings["MenuPreviousPage"] != "Unbound" && token == bindings["MenuPreviousPage"]) ||
+                    (bindings["MenuNextPage"] != "Unbound" && token == bindings["MenuNextPage"])) return;
+            }
             if (text.Length > 0) text.Append("   ·   ");
             text.Append(bindings.Label(action)).Append(" ").Append(label);
         }
@@ -93,7 +103,7 @@ namespace ControllerSupport
         private static bool IsOpen()
         {
             return game != null && !GameScript.pausing && GameScript.inventoryOpen &&
-                game.inventoryMain != null && game.inventoryMain.activeInHierarchy;
+                (CombatChipMenuContext.IsOpen(game) || (game.inventoryMain != null && game.inventoryMain.activeInHierarchy));
         }
 
         private static Item HeldItem()
@@ -148,7 +158,7 @@ namespace ControllerSupport
                 Bounds? currentBadge = heldBadgeProvider != null ? heldBadgeProvider() : heldBadgeBounds;
                 if (!currentBadge.HasValue) return;
                 Item held = HeldItem();
-                if (held == null || held.id <= 0 || held.q <= 1) return;
+                if (held == null || held.id <= 0 || held.q <= 1 || CombatChipMenuContext.IsHeldChip(game)) return;
                 Bounds bounds = currentBadge.Value;
                 Vector3 corner = Camera.main.WorldToScreenPoint(new Vector3(bounds.min.x, bounds.max.y, bounds.center.z));
                 Vector3 right = Camera.main.WorldToScreenPoint(new Vector3(bounds.max.x, bounds.max.y, bounds.center.z));

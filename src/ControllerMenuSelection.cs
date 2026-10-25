@@ -18,6 +18,8 @@ namespace ControllerSupport
         private static readonly FieldInfo[] SpecialModes = { Field("emblemForging"), Field("trashing"), Field("prisming") };
         private static readonly FieldInfo StorageLevel = Field("storageLevel");
         private static readonly bool[] pagingArmed = new bool[2];
+        private static readonly bool[] recipePagingArmed = new bool[2];
+        private static readonly string[] RecipePagingActions = { "MenuPreviousPage", "MenuNextPage" };
         private static GameObject pagingPlayer;
         private static int pagingScene = -1;
         private static readonly string[] Actions = { "MenuActivate", "MenuSecondary", "MenuTransfer",
@@ -41,6 +43,8 @@ namespace ControllerSupport
         private static bool sampledPhysicalMouse, controllerOwnsSelection;
         private static GameObject auxiliaryPane;
         private static bool portalContext, conversionModeContext;
+        private static int craftingModeContext = -1;
+        private static GameObject chipRootContext;
         private static readonly FieldInfo NativeHoverField = Field("hoverItem");
         private static GameScript hoverGame;
         private static Collider hoverCollider;
@@ -74,7 +78,8 @@ namespace ControllerSupport
         internal static bool InventoryOpen(GameScript game)
         {
             return game != null && !GameScript.pausing && !GameScript.dead && !GameScript.buildMode &&
-                GameScript.inventoryOpen && game.inventoryMain && game.inventoryMain.activeInHierarchy;
+                GameScript.inventoryOpen && (CombatChipMenuContext.IsOpen(game) ||
+                (game.inventoryMain && game.inventoryMain.activeInHierarchy));
         }
 
         internal static bool InventoryActionsOwnInput
@@ -88,7 +93,9 @@ namespace ControllerSupport
             InventoryNativeCursor.Update(game);
             if (!OwnershipActive()) return;
             if (stateProvider == null || updateFailed || bindings == null) return;
-            if (preparedGame == game && preparedFrame == Time.frameCount) return;
+            int nextCraftingMode = CraftingMenuContext.ModeIdentity(game);
+            GameObject nextChipRoot = CombatChipMenuContext.Root(game);
+            if (preparedGame == game && preparedFrame == Time.frameCount && craftingModeContext == nextCraftingMode && chipRootContext == nextChipRoot) return;
             EndNativeUpdate(); preparedGame = game; preparedFrame = Time.frameCount;
             try
             {
@@ -99,8 +106,17 @@ namespace ControllerSupport
                 bool portal = PortalMenuContext.IsOpen(game);
                 GameObject pane = game != null && game.menuStorage && game.menuStorage.activeInHierarchy ? game.menuStorage : null;
                 if (pane == null && ItemConversionContext.IsOpen(game)) pane = ItemConversionContext.Root(game);
+                if (pane == null) pane = CraftingMenuContext.Root(game);
+                if (pane == null) pane = nextChipRoot;
                 bool conversionMode = ItemConversionContext.ModeActive(game);
-                bool newlyOpen = ownershipSuspended || selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || conversionModeContext != conversionMode;
+                bool newlyOpen = ownershipSuspended || selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || conversionModeContext != conversionMode || craftingModeContext != nextCraftingMode || chipRootContext != nextChipRoot;
+                if (craftingModeContext != nextCraftingMode || chipRootContext != nextChipRoot)
+                {
+                    repeating = false; repeatBlocked = true; repeatTarget = null;
+                    actionFrame = nativeErrorFrame = -1;
+                }
+                craftingModeContext = nextCraftingMode;
+                chipRootContext = nextChipRoot;
                 ownershipSuspended = false;
                 conversionModeContext = conversionMode;
                 portalContext = portal; auxiliaryPane = pane;
@@ -147,6 +163,34 @@ namespace ControllerSupport
                     if (pagingAllowed && !pagingContextChanged && pagingArmed[i] && edge)
                     { pagingArmed[i] = false; pageDirection += i == 0 ? -1 : 1; }
                 }
+                bool recipeView = CraftingMenuContext.IsRecipeView(game);
+                bool recipePagingAllowed = recipeView && state != null && state.Connected &&
+                    pagingView && pagingView.isMine && !GadgetCoreAPI.IsInputFrozen();
+                bool recipePageActive = false, previousHeld = false, nextHeld = false;
+                int recipePageDirection = 0;
+                for (int i = 0; i < recipePagingArmed.Length; i++)
+                {
+                    bool held = bindings.Held(RecipePagingActions[i], state);
+                    bool edge = bindings.Pressed(RecipePagingActions[i], state);
+                    if (i == 0) previousHeld = held; else nextHeld = held;
+                    recipePageActive |= held || edge;
+                    if (recipeView && (held || edge))
+                        ControllerGameplayInput.ConsumeActionForFrame(RecipePagingActions[i]);
+                    if (!recipePagingAllowed || pagingContextChanged || moved || clicked)
+                        recipePagingArmed[i] = !held && recipePagingAllowed && !moved && !clicked;
+                    else if (!held) recipePagingArmed[i] = true;
+                    if (recipePagingAllowed && !pagingContextChanged && !moved && !clicked &&
+                        recipePagingArmed[i] && edge)
+                    {
+                        recipePagingArmed[i] = false;
+                        recipePageDirection += i == 0 ? -1 : 1;
+                    }
+                }
+                if (previousHeld && nextHeld)
+                {
+                    recipePageDirection = 0;
+                    Array.Clear(recipePagingArmed, 0, recipePagingArmed.Length);
+                }
                 // GadgetCore modal dialogs freeze native game UI. Disarm held
                 // controller actions as well, so dismissing a modal cannot drop,
                 // return or close using the same press.
@@ -184,10 +228,25 @@ namespace ControllerSupport
                     if (pageDirection != 0) SwitchStoragePage(game, pageDirection);
                     return;
                 }
+                // Recipe page bindings reserve their whole held interval before
+                // ordinary menu actions. RB may also mean Drop; remaps may share
+                // Activate/Cancel/etc. None of those actions may leak through.
+                if (recipeView && recipePageActive)
+                {
+                    controllerOwnsSelection = true;
+                    repeating = false; repeatBlocked = true;
+                    if (recipePageDirection != 0)
+                    {
+                        string reason;
+                        if (!CraftingMenuContext.TryChangeRecipePage(game, recipePageDirection, out reason) && reason != null)
+                            Reject(game, reason);
+                    }
+                    return;
+                }
                 if (pressed[4] || pressed[5] || pressed[6])
                 {
                     controllerOwnsSelection = true;
-                    bool hadItem = HasItem(InventoryItemLifecycle.Held(game));
+                    bool hadItem = CombatChipMenuContext.HasHeldItem(game);
                     if (pressed[4] && !hadItem && ItemConversionContext.ModeActive(game))
                     {
                         ItemConversionContext.CancelMode(game); repeating = false; repeatBlocked = true;
@@ -213,6 +272,22 @@ namespace ControllerSupport
                 }
                 Collider candidate = navigator.SelectedCollider;
                 int index = navigator.SelectedSlot;
+                if (navigator.SelectedIsChip)
+                {
+                    repeating = false; repeatBlocked = true;
+                    if (!pressed[0] && !pressed[1] && !pressed[2]) return;
+                    if (!pressed[0] || pressed[1] || pressed[2])
+                    { Reject(game, "Use primary to move Combat Chips"); return; }
+                    string reason;
+                    if (!CombatChipMenuContext.CanActivate(game,index,out reason))
+                    { Reject(game, reason); return; }
+                    if (!ValidateRay(candidate)) return;
+                    // Native ray dispatch sets slotID and calls Select/Place/Swap,
+                    // preserving GadgetCore equip callbacks and stat refreshes.
+                    controllerOwnsSelection = true;
+                    storageClick = true; virtualButton = 0; clickCollider = candidate;
+                    return;
+                }
                 if (navigator.SelectedIsConversionToggle || ItemConversionContext.ModeActive(game))
                 {
                     repeating = false; repeatBlocked = true;
@@ -220,7 +295,7 @@ namespace ControllerSupport
                     if (!pressed[0] || pressed[1] || pressed[2])
                     { Reject(game, ItemConversionContext.SecondaryRejection(game)); return; }
                     bool inventoryTarget = index >= 6 && index <= 35;
-                    if (!navigator.SelectedIsConversionToggle && inventoryTarget && HasItem(InventoryItemLifecycle.Held(game)))
+                    if (!navigator.SelectedIsConversionToggle && inventoryTarget && CombatChipMenuContext.HasHeldItem(game))
                     {
                         controllerOwnsSelection = true; ItemConversionContext.CancelMode(game);
                         return;
@@ -252,6 +327,19 @@ namespace ControllerSupport
                     storageClick = true; virtualButton = 0; clickCollider = candidate;
                     return;
                 }
+                if (navigator.SelectedIsCraftingControl)
+                {
+                    repeating = false; repeatBlocked = true;
+                    if (!pressed[0] && !pressed[1] && !pressed[2]) return;
+                    string reason;
+                    int intent = pressed[2] ? 2 : pressed[1] ? 1 : 0;
+                    if (!CraftingMenuContext.CanActivate(game, index, intent, out reason))
+                    { Reject(game, reason); return; }
+                    if (!ValidateRay(candidate)) return;
+                    controllerOwnsSelection = true;
+                    storageClick = true; virtualButton = 0; clickCollider = candidate;
+                    return;
+                }
                 Item heldItem = InventoryItemLifecycle.Held(game);
                 Item target = ReadTarget(game, index);
                 if (repeating && secondaryHeld && !CanPlaceOne(game, index, heldItem, target))
@@ -268,8 +356,24 @@ namespace ControllerSupport
                 { Reject(game, "Wrong item type"); repeating = false; repeatBlocked = true; return; }
                 if (pressed[2] && (HasItem(heldItem) || !CanOfferTransfer(game, index, target)))
                 { Reject(game, "No transfer available"); return; }
+                if (CraftingMenuContext.IsItemSlot(index))
+                {
+                    string reason;
+                    bool allowed;
+                    // Eligibility can invoke the effective native validator on
+                    // an actual attempt. Reuse native-error capture so the same
+                    // rejection is not replayed by the controller adapter.
+                    storageClick = true;
+                    try { allowed = CraftingMenuContext.CanActivate(game, index, pressed[2] ? 2 : button, out reason); }
+                    finally { storageClick = false; }
+                    if (!allowed)
+                    {
+                        if (nativeErrorFrame != Time.frameCount) Reject(game, reason);
+                        return;
+                    }
+                }
                 if (!ValidateRay(candidate)) return;
-                if (pressed[2] && !StorageOpen(game))
+                if (pressed[2] && !StorageOpen(game) && !CraftingMenuContext.IsItemSlot(index))
                 {
                     // Native Update validates once before ShiftClick2. This call
                     // can emit Error, so it belongs to the deliberate action,
@@ -296,7 +400,8 @@ namespace ControllerSupport
                 {
                     // Invoke the effective Shift-click method directly. Never change
                     // the keyboard's shifting latch or depend on Shift release timing.
-                    if (actionIsStorage) game.StartCoroutine(game.ShiftClickStorage(index - 51));
+                    if (CraftingMenuContext.IsItemSlot(index)) game.StartCoroutine(game.ShiftClickCraft(CraftingMenuContext.NativeSlot(index)));
+                    else if (actionIsStorage) game.StartCoroutine(game.ShiftClickStorage(index - 51));
                     else if (StorageOpen(game)) game.StartCoroutine(game.ShiftClick(NativeSlot(index)));
                     else game.StartCoroutine(game.ShiftClick2(NativeSlot(index)));
                     repeating = false; repeatBlocked = true;
@@ -310,7 +415,8 @@ namespace ControllerSupport
                     storageClick = true; virtualButton = -1; clickCollider = candidate;
                     try
                     {
-                        if (actionIsStorage) game.SwapItemStorage(index - 51);
+                        if (CraftingMenuContext.IsItemSlot(index)) game.SwapItemCraft(CraftingMenuContext.NativeSlot(index));
+                        else if (actionIsStorage) game.SwapItemStorage(index - 51);
                         else game.SwapItem(NativeSlot(index));
                     }
                     finally { storageClick = false; clickCollider = null; }
@@ -384,7 +490,7 @@ namespace ControllerSupport
                 }
                 if (renderer != null && !renderer.IsAlive)
                 { renderer.Dispose(); renderer = null; assetFailed = false; }
-                bool page = navigator.SelectedIsStoragePage || navigator.SelectedIsStorageUpgrade || navigator.SelectedIsPortal || navigator.SelectedIsConversionToggle;
+                bool page = navigator.SelectedIsStoragePage || navigator.SelectedIsStorageUpgrade || navigator.SelectedIsPortal || navigator.SelectedIsConversionToggle || navigator.SelectedIsCraftingControl;
                 if (renderer != null && rendererIsPage != page)
                 { renderer.Dispose(); renderer = null; }
                 if (renderer == null && !assetFailed)
@@ -396,10 +502,10 @@ namespace ControllerSupport
                 }
                 if (renderer != null)
                 {
-                    int id = controllerOwnsSelection && HasItem(held) ? held.id : 0;
+                    int id = controllerOwnsSelection && CombatChipMenuContext.HasHeldItem(game) ? held.id : 0;
                     if (id > 0) HideNativeHeldVisual(game); else RestoreNativeHeldVisual();
                     renderer.SetStyle(ItemConversionContext.ActiveStyle(game));
-                    renderer.SetHeldItemIcon(id, nativeHeldIconWidth, nativeHeldIconHeight);
+                    renderer.SetHeldItemIcon(id, nativeHeldIconWidth, nativeHeldIconHeight, CombatChipMenuContext.IsHeldChip(game));
                     renderer.Show(selected);
                 }
                 else RestoreNativeHeldVisual();
@@ -407,10 +513,10 @@ namespace ControllerSupport
                 Item target = ReadTarget(game, navigator.SelectedSlot);
                 Describe(game, navigator.SelectedSlot, held, target, out primary, out secondary);
                 InventoryFeedback.SetContext(game, selected, controllerOwnsSelection && !InventoryItemLifecycle.MutationsBlocked(game), bindings,
-                    primary, secondary, !HasItem(held) && CanOfferTransfer(game, navigator.SelectedSlot, target), HasItem(held),
+                    primary, secondary, !CombatChipMenuContext.HasHeldItem(game) && CanOfferTransfer(game, navigator.SelectedSlot, target), CombatChipMenuContext.HasHeldItem(game),
                     renderer != null ? renderer.HeldItemBounds : null,
                     ItemConversionContext.ModeActive(game) && !HasItem(held) ? ItemConversionContext.CancelLabel(game) : null,
-                    HeldBadgeProvider, StorageOpen(game));
+                    HeldBadgeProvider, StorageOpen(game), CraftingMenuContext.IsRecipeView(game));
             }
             catch (Exception error) { Disable(error); }
         }
@@ -459,6 +565,14 @@ namespace ControllerSupport
                 if (PortalMenuContext.CanActivate(game, slot, out reason)) primary = PortalMenuContext.ActionLabel(slot);
                 return;
             }
+            if (CombatChipMenuContext.IsTarget(slot))
+            { primary = CombatChipMenuContext.ActionLabel(game,slot); return; }
+            if (CraftingMenuContext.IsTarget(slot))
+            {
+                primary = CraftingMenuContext.ActionLabel(game, slot);
+                secondary = CraftingMenuContext.SecondaryLabel(game, slot);
+                return;
+            }
             if (navigator.SelectedIsStoragePage) { primary = "Select page"; return; }
             if (navigator.SelectedIsStorageUpgrade) { primary = UpgradeAvailable(game) ? "Upgrade" : null; return; }
             if (!IsActionableSlot(game, navigator.SelectedCollider, slot)) return;
@@ -485,6 +599,7 @@ namespace ControllerSupport
         {
             if (!InventoryOpen(game) || !candidate || !SupportedItemContext(game) ||
                 InventoryItemLifecycle.MutationsBlocked(game)) return false;
+            if (CraftingMenuContext.IsItemSlot(index)) return CraftingMenuContext.IsOpen(game);
             if (index >= 6 && index <= 44)
                 return candidate.transform.parent == game.inventoryMain.transform;
             if (index >= 45 && index <= 50 && game.inventoryBar)
@@ -495,11 +610,12 @@ namespace ControllerSupport
         }
 
         // Selection IDs and native inventory IDs differ only for hotkey targets.
-        private static int NativeSlot(int index) { return index >= 45 && index <= 50 ? index - 45 : index; }
+        private static int NativeSlot(int index) { if (CraftingMenuContext.IsItemSlot(index)) return CraftingMenuContext.NativeSlot(index); return index >= 45 && index <= 50 ? index - 45 : index; }
         private static Item ReadTarget(GameScript game, int index)
         { return ReadTargetAt(game, index, index >= 51 && index <= 86, InventoryItemLifecycle.CurrentPage(game)); }
         private static Item ReadTargetAt(GameScript game, int index, bool storage, int page)
         {
+            if (CraftingMenuContext.IsItemSlot(index)) return CraftingMenuContext.ReadTarget(game, index);
             FieldInfo field = storage ? StorageField : InventoryField;
             Item[] items = game != null && field != null ? field.GetValue(game) as Item[] : null;
             int native = storage ? index - 51 : NativeSlot(index);
@@ -512,7 +628,10 @@ namespace ControllerSupport
         private static bool CanOfferTransfer(GameScript game, int index, Item item)
         {
             if (!HasItem(item)) return false;
+            if (CraftingMenuContext.IsItemSlot(index)) return CraftingMenuContext.CanTransfer(game, index);
             if (index >= 51 && index <= 86) return StorageOpen(game);
+            if (CraftingMenuContext.IsOpen(game))
+                return index >= 6 && index <= 50 && CraftingMenuContext.CanTransferInventory(game, item);
             return SupportedItemContext(game) && index >= 6 && index <= 50 && NativeSlot(index) < 45 &&
                 (StorageOpen(game) || (game.menuCraft && game.menuCraft.activeInHierarchy));
         }
@@ -542,6 +661,7 @@ namespace ControllerSupport
         }
         private static bool CanPlaceOne(GameScript game, int slot, Item held, Item target)
         {
+            if (CraftingMenuContext.IsItemSlot(slot)) return CraftingMenuContext.CanPlaceOne(game, slot, held, target);
             return HasItem(held) && Stackable(held) && EligibleInventorySlot(slot, held) &&
                 ((slot >= 6 && slot <= 50) || (slot >= 51 && slot <= 86)) &&
                 (!HasItem(target) || (CanStack(held, target) && target.q < 9999));
@@ -596,9 +716,16 @@ namespace ControllerSupport
         {
             storageClick = false; virtualButton = -1; clickCollider = null;
         }
+        private static void RefreshCraftingMode()
+        {
+            if (preparedGame != null && (craftingModeContext != CraftingMenuContext.ModeIdentity(preparedGame) ||
+                chipRootContext != CombatChipMenuContext.Root(preparedGame)))
+                Prepare(preparedGame);
+        }
         internal static Vector3 VirtualMousePosition()
         {
             if (!OwnershipActive()) return Input.mousePosition;
+            RefreshCraftingMode();
             Collider selected = storageClick ? clickCollider : navigator.SelectedCollider;
             if (InventoryOpen(selectionGame) && controllerOwnsSelection && selected && Camera.main &&
                 !Input.GetMouseButtonDown(0) && !Input.GetMouseButtonDown(1))
@@ -608,6 +735,7 @@ namespace ControllerSupport
         internal static bool VirtualMouseButtonDown(int button)
         {
             bool active = OwnershipActive();
+            if (active) RefreshCraftingMode();
             return Input.GetMouseButtonDown(button) || (active && storageClick && button == virtualButton && clickCollider &&
             (button != 0 || !navigator.SelectedIsPortal || PortalMenuContext.NativeClickAllowed(preparedGame)) &&
             !Input.GetMouseButtonDown(0) && !Input.GetMouseButtonDown(1));
@@ -619,7 +747,7 @@ namespace ControllerSupport
                 navigator.SelectedSlot - 51 : -1;
         }
         internal static bool ClosingStorageWouldDropHeldItem(GameScript game)
-        { return StorageOpen(game) && HasItem(InventoryItemLifecycle.Held(game)); }
+        { return StorageOpen(game) && CombatChipMenuContext.HasHeldItem(game); }
         internal static void PlaceHeldItemCursor(ActionCursor cursor)
         {
             if (!OwnershipActive()) return;
@@ -639,10 +767,12 @@ namespace ControllerSupport
                 navigator.Reset();
                 Array.Clear(armed, 0, armed.Length);
                 Array.Clear(pagingArmed, 0, pagingArmed.Length);
+                Array.Clear(recipePagingArmed, 0, recipePagingArmed.Length);
                 repeating = false; repeatBlocked = true; repeatTarget = null;
                 actionFrame = nativeErrorFrame = -1;
                 hoverGame = null; hoverCollider = null; hoverControllerOwned = false;
                 preparedGame = null; preparedFrame = -1;
+                craftingModeContext = -1;
             }
             ownershipSuspended = true;
             controllerOwnsSelection = false;
@@ -676,11 +806,14 @@ namespace ControllerSupport
             EndNativeUpdate(); RestoreNativeHeldVisual(); InventoryNativeCursor.Reset();
             stateProvider=null; usingControllerProvider=null; bindings=null; logWarning=null;
             preparedGame=selectionGame=null; preparedFrame=-1; Array.Clear(armed,0,armed.Length);
-            Array.Clear(pagingArmed,0,pagingArmed.Length); pagingPlayer=null; pagingScene=-1;
+            Array.Clear(pagingArmed,0,pagingArmed.Length);
+            Array.Clear(recipePagingArmed,0,recipePagingArmed.Length); pagingPlayer=null; pagingScene=-1;
+            craftingModeContext=-1;
             sampledPhysicalMouse=controllerOwnsSelection=ownershipSuspended=false; auxiliaryPane=null; portalContext=conversionModeContext=false;
             hoverGame=null; hoverCollider=null; hoverControllerOwned=false;
             nativeHeldIconWidth=nativeHeldIconHeight=0f;
             repeatTarget=null; repeating=repeatBlocked=false; actionFrame=nativeErrorFrame=-1;
+            chipRootContext = null;
             navigator.Reset(); if(renderer!=null) renderer.Dispose(); renderer=null;
             rendererIsPage=assetFailed=updateFailed=false;
             InventoryFeedback.Reset(); InventoryItemLifecycle.Reset(); PortalMenuContext.Reset();

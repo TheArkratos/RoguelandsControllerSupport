@@ -26,6 +26,8 @@ namespace ControllerSupport
         private sealed class Motion { internal WeakReference Target; internal Vector2 Center,Velocity; internal float Time; }
         private static readonly Dictionary<int,Motion> motion = new Dictionary<int,Motion>();
         internal static float VelocitySmoothingSeconds = .1f;
+        // Diagnostic overlays only; functional aiming/guide UI remains independent.
+        internal static bool ControllerCombatModeDebugLinesEnabled = false;
         private static readonly List<Entry> tokens = new List<Entry>();
         private static readonly Type[] Segmented = {
             typeof(EnemyScript).Assembly.GetType("WormScript"), typeof(EnemyScript).Assembly.GetType("SliverScript"),
@@ -507,6 +509,7 @@ namespace ControllerSupport
                 {
                     GUI.matrix=Matrix4x4.identity; GUI.color=Color.red;
                     GUI.DrawTexture(new Rect(point.x-3,Screen.height-point.y-3,6,6),Texture2D.whiteTexture);
+                    if(!ControllerCombatModeDebugLinesEnabled) return;
                     Vector3 visual;
                     if(!ControllerAim.TryWorldPoint(out visual)) { ClearAppliedVisual(); return; }
                     Vector2 origin=PlayerCenter(),axis=(Vector2)visual-origin,min,max;

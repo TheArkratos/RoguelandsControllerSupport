@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems><DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads><NuGetAudit>false</NuGetAudit></PropertyGroup>
-<ItemGroup><Compile Include="../../src/InventoryFeedback.cs" /><Compile Include="../../src/BindingConfig.cs" /><Compile Include="../../src/JoystickInputState.cs" /><Compile Include="../../src/RawJoystickEvent.cs" /><Compile Include="Program.cs" /><Compile Include="Stubs.cs" /></ItemGroup>
+<ItemGroup>
+    <Compile Include="../CombatChipFeedbackStub.cs" /><Compile Include="../../src/InventoryFeedback.cs" /><Compile Include="../../src/BindingConfig.cs" /><Compile Include="../../src/JoystickInputState.cs" /><Compile Include="../../src/RawJoystickEvent.cs" /><Compile Include="Program.cs" /><Compile Include="Stubs.cs" /></ItemGroup>
 </Project>

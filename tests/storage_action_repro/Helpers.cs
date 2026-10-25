@@ -18,9 +18,17 @@ namespace ControllerSupport
 {
     // These fixtures test production click routing. Lifecycle movement and GUI
     // rendering have dedicated production-linked integration fixtures.
-    internal static class ControllerGameplayInput { internal static void ConsumeInventoryInput() { } }
+    internal static class ControllerGameplayInput { internal static void ConsumeActionForFrame(string action) { } internal static void ConsumeInventoryInput() { } }
     internal static class InventoryItemLifecycle
     {
+        internal static bool IsHoldingChip(GameScript game)
+        {
+            var flag=typeof(GameScript).GetField("holdingCombatChip",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic);
+            var held=Held(game); return game!=null && held!=null && held.id>0 && flag!=null && (bool)flag.GetValue(game);
+        }
+        internal static bool HasHeldItem(GameScript game)
+        { var held=Held(game);return held!=null && held.id>0 && (held.q>0 || IsHoldingChip(game)); }
+
         internal static Item Held(GameScript game) { return game == null ? null : game.holdingItem; }
         internal static int CurrentPage(GameScript game) { return game.currentStoragePage; }
         internal static void ObserveContext(GameScript game) { }
@@ -36,7 +44,7 @@ namespace ControllerSupport
     {
         internal static string LastReason;
         internal static void SetContext(GameScript game, UnityEngine.Collider selected, bool controller,
-            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false) { }
+            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false, bool recipePaging = false) { }
         internal static void ClearPresentation() { LastReason=null; }
         internal static void Reject(string reason) { LastReason=reason; }
         internal static void Reset() { LastReason=null; }

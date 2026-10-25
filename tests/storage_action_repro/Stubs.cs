@@ -23,6 +23,17 @@ namespace UnityEngine
         public NetworkView view = new NetworkView();
         public GameObject(string name = "") { this.name = name; transform = new Transform(this); }
         public T GetComponent<T>() where T : class { return collider as T ?? renderer as T ?? view as T; }
+        public T[] GetComponentsInChildren<T>(bool includeInactive = false) where T : class
+        {
+            var found = new List<T>();
+            if (includeInactive || activeInHierarchy)
+            {
+                T own = GetComponent<T>(); if (own != null) found.Add(own);
+                for (int i = 0; i < transform.childCount; i++)
+                    found.AddRange(transform.GetChild(i).gameObject.GetComponentsInChildren<T>(includeInactive));
+            }
+            return found.ToArray();
+        }
     }
     public class Transform : Object
     {
@@ -103,6 +114,8 @@ namespace UnityEngine
 public static class MenuScript { public static UnityEngine.GameObject player = new UnityEngine.GameObject("player"); }
 public class GameScript : UnityEngine.Object
 {
+    public void SwapItemCraft(int slot) { throw new System.NotSupportedException("Unexpected Alchemy action in non-Alchemy fixture"); }
+    public System.Collections.IEnumerator ShiftClickCraft(int slot) { throw new System.NotSupportedException("Unexpected Alchemy transfer in non-Alchemy fixture"); }
     public void SelectPage(int page) { if (page <= storageLevel) currentStoragePage = page; }
     public static bool inventoryOpen = true, pausing, dead, buildMode;
     public UnityEngine.GameObject inventoryMain, inventoryBar, menuStorage, holdingItemObj,
@@ -201,7 +214,7 @@ namespace ControllerSupport
         }
         internal void Show(UnityEngine.Collider target) { ShowTarget = target; }
         internal float HeldIconWidth, HeldIconHeight;
-        internal void SetHeldItemIcon(int id, float width, float height)
+        internal void SetHeldItemIcon(int id, float width, float height, bool isChip = false)
         { HeldIconId = id; HeldIconWidth = width; HeldIconHeight = height; HeldIconSetCount++; }
         internal void Hide() { ShowTarget = null; HeldIconId = 0; }
         internal void Dispose() { }

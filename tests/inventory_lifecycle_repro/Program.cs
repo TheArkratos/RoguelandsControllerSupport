@@ -16,7 +16,7 @@ internal static class Program
         InventoryItemLifecycle.Reset();
         InstallCapture(true);
         Network.Live.Clear(); Network.FailDestroy = false;
-        GadgetCoreAPI.Drops = 0; GadgetCoreAPI.FailSpawn = GadgetCoreAPI.ThrowSpawn = false;
+        GadgetCoreAPI.LastIsChip = false; GadgetCoreAPI.Drops = 0; GadgetCoreAPI.FailSpawn = GadgetCoreAPI.ThrowSpawn = false;
         MenuScript.player = new GameObject(); MenuScript.player.transform.position = new Vector3(5, 8, 0);
         PlayerScript.curInteractObj = new GameObject(); PlayerScript.curInteractObj.transform.position = new Vector3(40, 20, 0);
         GameScript game = new GameScript(); InventoryItemLifecycle.ObserveContext(game); return game;
@@ -76,8 +76,195 @@ internal static class Program
             .Invoke(null, new object[] { game });
     }
 
+    private static void GearForgeLifecycle()
+    {
+        string reason;
+        GameScript game = Fresh(); game.GearForge();
+        game.craft[0] = new Item(101, 5) { extra = "Gear Forge emblem metadata" };
+        Action(game, "SelectItemCraft", 0);
+        Check(InventoryItemLifecycle.TryReturn(game, out reason) && game.craft[0].q == 5
+            && game.craft[0].extra == "Gear Forge emblem metadata" && game.inventory[0].id == 0,
+            "Gear Forge emblem returns to original crafting input, not inventory hotkey zero");
+        Action(game, "SplitItemCraft", 0);
+        Check(InventoryItemLifecycle.TryReturn(game, out reason) && game.craft[0].q == 5,
+            "Gear Forge split emblem rejoins its exact compatible source stack");
+        Item output = new Item(300, 1) { extra = "generated gear metadata" };
+        game.craft[3] = output; Action(game, "SelectItemCraft", 3);
+        Check(InventoryItemLifecycle.TryReturn(game, out reason) && ReferenceEquals(game.craft[3], output)
+            && game.craft[3].extra == "generated gear metadata" && game.inventory[3].id == 0,
+            "Gear Forge safe return preserves exact native output instance and metadata");
+        Action(game, "SelectItemCraft", 0); game.Alchemy();
+        Item held = game.holdingItem;
+        Check(!InventoryItemLifecycle.TryReturn(game, out reason) && ReferenceEquals(game.holdingItem, held)
+            && game.craft[0].id == 0, "Same-root station change cannot return Gear emblems into an Alchemy context");
+        game = Fresh(); game.Alchemy(); game.craft[1] = new Item(11, 2);
+        Action(game, "SelectItemCraft", 1); game.GearForge();
+        Check(!InventoryItemLifecycle.TryReturn(game, out reason) && game.holdingItem.id == 11
+            && game.craft[1].id == 0, "Alchemy source cannot be reinterpreted after changing the same pane to Gear Forge");
+        game = Fresh(); game.GearForge();
+        PlayerScript.curInteractObj.transform.position = new Vector3(300, 120, 0);
+        Type opener = typeof(InventoryItemLifecycle).Assembly.GetType("ControllerSupport.InventoryGearForgeContextPatch");
+        Check(opener != null && opener.IsPublic, "Gear Forge opener patch is exported for GadgetCore");
+        opener.GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { game });
+        game.menuCraft.activeSelf = false; game.menuRecipe.activeSelf = true;
+        game.holdingItem = new Item(301, 1) { extra = "unknown generated gear" }; PlayerScript.curInteractObj = null;
+        Check(InventoryItemLifecycle.LeaveRange(game, out reason) && GadgetCoreAPI.LastPosition.x == 300
+            && GadgetCoreAPI.LastPosition.y == 121.5f && GadgetCoreAPI.LastDrop.extra == "unknown generated gear",
+            "Gear Forge recipe pane keeps original station position for held-output range fallback");
+        game = Fresh(); game.Alchemy(); InventoryItemLifecycle.ObserveContext(game);
+        game.GearForge(); PlayerScript.curInteractObj.transform.position = new Vector3(310, 125, 0);
+        opener.GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { game });
+        game.holdingItem = new Item(302, 1); PlayerScript.curInteractObj = null;
+        Check(InventoryItemLifecycle.LeaveRange(game, out reason) && GadgetCoreAPI.LastPosition.x == 310
+            && GadgetCoreAPI.LastPosition.y == 126.5f, "Same pane changing station type refreshes its opener position");
+        game = Fresh(); game.GearForge(); game.holdingItem = new Item(303, 1);
+        GadgetCoreAPI.ThrowSpawn = true; Network.FailDestroy = true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(game, out reason) && !Guard(game),
+            "Gear Forge preserves unresolved drop quarantine");
+    }
+
+    private static void AlchemyLifecycle()
+    {
+        string reason;
+        GameScript game = Fresh(); game.Alchemy();
+        game.craft[1] = new Item(11, 5) { extra = "alchemy ingredient metadata" };
+        Action(game, "SelectItemCraft", 1);
+        Check(InventoryItemLifecycle.TryReturn(game, out reason) && game.craft[1].q == 5
+            && game.craft[1].extra == "alchemy ingredient metadata" && game.inventory[1].id == 0,
+            "Alchemy ingredient returns to exact craft slot, never a hotkey inventory slot");
+        Action(game, "SplitItemCraft", 1);
+        Check(InventoryItemLifecycle.TryReturn(game, out reason) && game.craft[1].q == 5,
+            "Alchemy split returns whole held portion to compatible original craft stack");
+        game.craft[3] = new Item(53, 2) { extra = "native output" };
+        Action(game, "SelectItemCraft", 3);
+        Check(InventoryItemLifecycle.TryReturn(game, out reason) && game.craft[3].q == 2
+            && game.craft[3].extra == "native output" && game.inventory[3].id == 0,
+            "Alchemy output returns to exact output slot without ingredient eligibility validation");
+        Action(game, "SelectItemCraft", 1); game.craft[1] = new Item(12, 1);
+        Item held = game.holdingItem;
+        Check(!InventoryItemLifecycle.TryReturn(game, out reason) && ReferenceEquals(held, game.holdingItem)
+            && game.craft[1].id == 12 && game.craft[1].q == 1,
+            "Alchemy return rejects incompatible occupied source without touching items");
+        game = Fresh(); game.Alchemy(); game.craft[0] = new Item(11, 2);
+        Action(game, "SelectItemCraft", 0); game.menuCraft.activeSelf = false;
+        Check(!InventoryItemLifecycle.TryReturn(game, out reason) && game.holdingItem.q == 2
+            && game.inventory[0].id == 0, "Closed Alchemy context cannot redirect a craft source into inventory");
+        game = Fresh(); game.Alchemy();
+        PlayerScript.curInteractObj.transform.position = new Vector3(250, 110, 0);
+        Type opener = typeof(InventoryItemLifecycle).Assembly.GetType("ControllerSupport.InventoryAlchemyContextPatch");
+        Check(opener != null && opener.IsPublic, "Alchemy opener patch is exported for GadgetCore");
+        opener.GetMethod("Postfix", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { game });
+        game.holdingItem = new Item(53, 1);
+        game.menuCraft.activeSelf = false; game.menuRecipe.activeSelf = true;
+        PlayerScript.curInteractObj = null;
+        Check(InventoryItemLifecycle.LeaveRange(game, out reason) && GadgetCoreAPI.LastPosition.x == 250
+            && GadgetCoreAPI.LastPosition.y == 111.5f,
+            "Alchemy recipe transition retains remembered opener for unknown held-output range drop");
+        MethodInfo targets = typeof(InventoryMutationGuardPatch).GetMethod("TargetMethods", BindingFlags.Static | BindingFlags.NonPublic);
+        var names = ((IEnumerable<MethodBase>)targets.Invoke(null, null)).Select(method => method.Name).ToArray();
+        Check(names.Contains("Craft") && names.Contains("DropCraftItems"), "Drop quarantine covers crafting progress and staged ingredient drops");
+        game = Fresh(); game.Alchemy(); game.holdingItem = new Item(53, 1);
+        GadgetCoreAPI.ThrowSpawn = true; Network.FailDestroy = true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(game, out reason) && !Guard(game),
+            "Alchemy inherits unresolved drop quarantine without resetting transaction protection");
+    }
+
+    private static void ChipAction(GameScript game, string name, int slot)
+    {
+        Type patch=typeof(InventoryItemLifecycle).Assembly.GetType("ControllerSupport.InventoryChipSourcePatch");
+        MethodInfo prefix=patch.GetMethod("Prefix",BindingFlags.Static|BindingFlags.NonPublic);
+        MethodInfo postfix=patch.GetMethod("Postfix",BindingFlags.Static|BindingFlags.NonPublic);
+        object[] args={game,null};prefix.Invoke(null,args);
+        game.slotID=slot; typeof(GameScript).GetMethod(name).Invoke(game,new object[]{slot});
+        postfix.Invoke(null,new object[]{game,slot,args[1]});
+    }
+    private static void ChipLifecycle()
+    {
+        string reason; var g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);
+        g.holdingItem=new Item(17,0);g.holdingCombatChip=true;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.holdingItem.id==17,
+            "q0 chip with no source rejects return instead of silently claiming empty hand");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.combatChips[7]=17;
+        ChipAction(g,"SelectCombatChip",7);
+        Check(g.holdingItem.id==17&&g.holdingItem.q==0&&g.holdingCombatChip&&g.combatChips[7]==0,
+            "native chip pickup preserves q0 special held type");
+        InventoryItemLifecycle.ClearIfEmpty(g);InventoryItemLifecycle.ObserveContext(g);
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.combatChips[7]==17&&g.holdingItem.id==0&&!g.holdingCombatChip,
+            "q0 chip returns to exact original chip slot through native placement");
+        Check(g.ChipEquipCalls==1&&g.ChipDequipCalls==1&&g.inventory[7].id==0,
+            "chip return keeps native equip hooks and never reinterprets source as inventory");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.combatChips[7]=17;g.combatChips[12]=18;
+        ChipAction(g,"SelectCombatChip",7);Item same=g.holdingItem;ChipAction(g,"SwapCombatChip",12);
+        Check(ReferenceEquals(same,g.holdingItem)&&g.holdingItem.id==18&&g.combatChips[12]==17,
+            "native chip swap changes held ID on the same Item object");
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.holdingItem.id==18&&g.combatChips[12]==17,
+            "occupied swap source does not undo completed swap");
+        g.combatChips[12]=0;
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.combatChips[12]==18&&g.combatChips[7]==0,
+            "same-object chip swap records latest source slot");
+        g=Fresh();g.inventory[5]=new Item(17,1);Action(g,"SelectItem",5);g.CombatChipMenu();
+        g.holdingItem=new Item(17,0);g.holdingCombatChip=true;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.inventory[5].id==0,
+            "chip without native pickup provenance cannot use stale ordinary inventory source");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.combatChips[4]=22;
+        ChipAction(g,"SelectCombatChip",4);g.menuCombat.activeSelf=false;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.holdingItem.id==22&&g.combatChips[4]==0,
+            "closed chip menu cannot receive return through stale source");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.combatChips[4]=22;
+        ChipAction(g,"SelectCombatChip",4);g.holdingCombatChip=false;g.holdingItem.q=1;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.inventory[4].id==0,
+            "ordinary item cannot reinterpret an old chip source");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.holdingItem=new Item(19,0);g.holdingCombatChip=true;
+        Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&GadgetCoreAPI.LastIsChip&&GadgetCoreAPI.LastDrop.id==19&&GadgetCoreAPI.LastDrop.q==0,
+            "above-head q0 chip drop uses special native chip branch without inventing quantity");
+        Check(GadgetCoreAPI.LastPosition.x==5&&GadgetCoreAPI.LastPosition.y==11&&g.holdingItem.id==0&&!g.holdingCombatChip,
+            "successful chip drop clears both native held fields only after confirmed spawn");
+        Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&GadgetCoreAPI.Drops==1,
+            "repeated chip drop cannot duplicate a pickup");
+        g=Fresh();PlayerScript.curInteractObj.transform.position=new Vector3(71,29,0);g.CombatChipMenu();
+        var opener=typeof(InventoryItemLifecycle).Assembly.GetType("ControllerSupport.InventoryCombatChipContextPatch");
+        opener.GetMethod("Postfix",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[]{g});
+        g.holdingItem=new Item(20,0);g.holdingCombatChip=true;PlayerScript.curInteractObj.transform.position=new Vector3(600,600,0);
+        Check(InventoryItemLifecycle.LeaveRange(g,out reason)&&GadgetCoreAPI.LastIsChip&&GadgetCoreAPI.LastPosition.x==71&&GadgetCoreAPI.LastPosition.y==30.5f,
+            "unknown q0 chip forced exit uses captured station rather than current interaction target");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.holdingItem=new Item(21,0);g.holdingCombatChip=true;GadgetCoreAPI.ThrowSpawn=true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&Network.Live.Count==0&&g.holdingCombatChip&&g.holdingItem.id==21&&!InventoryItemLifecycle.MutationsBlocked(g),
+            "failed chip RPC rolls back real pickup and retains q0 chip plus flag");
+        GadgetCoreAPI.ThrowSpawn=false;
+        Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&GadgetCoreAPI.LastIsChip&&Network.Live.Count==1,
+            "rolled-back chip drop retries as a chip exactly once");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.holdingItem=new Item(21,0);g.holdingCombatChip=true;GadgetCoreAPI.ThrowSpawn=true;Network.FailDestroy=true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&!Guard(g)&&g.holdingCombatChip&&g.holdingItem.id==21,
+            "uncertain chip rollback quarantines native actions and retains special held type");
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&!InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&GadgetCoreAPI.Drops==1,
+            "quarantined q0 chip cannot be returned or spawned again");
+        var targets=((IEnumerable<MethodBase>)typeof(InventoryMutationGuardPatch).GetMethod("TargetMethods",BindingFlags.NonPublic|BindingFlags.Static).Invoke(null,null)).Select(x=>x.Name).ToList();
+        foreach(string name in new[]{"SelectCombatChip","SwapCombatChip","PlaceCombatChip"})
+            Check(targets.Contains(name),"native quarantine covers "+name);
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.combatChips[3]=23;
+        ChipAction(g,"SelectCombatChip",3);g.ThrowRefresh=true;
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.combatChips[3]==23&&g.holdingItem.id==0&&!g.holdingCombatChip,
+            "cosmetic exception after committed chip placement cannot refund or duplicate chip");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.combatChips[3]=23;
+        ChipAction(g,"SelectCombatChip",3);g.RejectPlace=true;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.combatChips[3]==0&&g.holdingItem.id==23&&g.holdingCombatChip,
+            "rejected native chip return preserves q0 held chip and source");
+        g.RejectPlace=false;Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.combatChips[3]==23,
+            "rejected chip return can retry through native placement without a copy");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.holdingItem=new Item(24,0);g.holdingCombatChip=true;GadgetCoreAPI.FailSpawn=true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&g.holdingItem.id==24&&g.holdingItem.q==0&&g.holdingCombatChip&&Network.Live.Count==0,
+            "failed chip spawn preserves exact held native type");
+        g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.combatChips[1]=5;g.exitingcombatmode=true;
+        ChipAction(g,"SelectCombatChip",1);
+        Check(g.combatChips[1]==5&&g.holdingItem==null&&InventoryItemLifecycle.TryReturn(g,out reason),
+            "native exiting-combat rejection does not invent chip provenance");
+    }
+
     public static void Main()
     {
+        ChipLifecycle();
+        GearForgeLifecycle();
+        AlchemyLifecycle();
         string reason;
         GameScript g = Fresh();
         OpenPrism(g, new Vector3(210, 85, 0));

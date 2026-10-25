@@ -65,6 +65,7 @@ namespace ControllerSupport
             ControllerGameplayActions.Reset();
             ControllerAimAssist.Reset();
             ControllerAim.Reset();
+            ControllerCombatGuide.Reset();
             ControllerExploration.Reset();
             ControllerMenuSelection.Reset();
             ControllerFrontEndMenus.Reset();

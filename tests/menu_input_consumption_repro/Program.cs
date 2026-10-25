@@ -83,6 +83,30 @@ internal static class Program
         keyboard.Apply(new RawJoystickEvent { Type = 2, Number = 0, Value = 32767 });
         Time.frameCount++;
         Check(ControllerGameplayInput.PlayerButton("Right"), "Stick movement retained in inventory");
+        string recipeTriggers = BindingConfig.DefaultText
+            .Replace("MenuPreviousPage = Joystick1Button4", "MenuPreviousPage = RightTrigger")
+            .Replace("MenuNextPage = Joystick1Button5", "MenuNextPage = LeftTrigger");
+        var recipeInput = Fresh(recipeTriggers);
+        recipeInput.Apply(new RawJoystickEvent { Type = 2, Number = 5, Value = 32767 });
+        recipeInput.Apply(new RawJoystickEvent { Type = 2, Number = 2, Value = 32767 });
+        ControllerGameplayInput.ConsumeInventoryInput();
+        ControllerGameplayInput.ConsumeActionForFrame("MenuPreviousPage");
+        ControllerGameplayInput.ConsumeActionForFrame("MenuNextPage");
+        Check(ControllerGameplayInput.IsActionConsumed("PrimaryAction") && ControllerGameplayInput.IsActionConsumed("Jump"),
+            "both conflicting recipe-page bindings remain consumed in the same frame");
+        Input.Axes["Attack"] = -0.4f;
+        Input.Down.Add("Jump");
+        Check(ControllerGameplayInput.PlayerAxis("Attack") == 0f && !ControllerGameplayInput.PlayerButtonDown("Jump"),
+            "recipe paging consumes both native trigger aliases without attacking or jumping");
+        ControllerInputOwnership.Configure(() => false);
+        Check(ControllerGameplayInput.PlayerAxis("Attack") == -0.4f && ControllerGameplayInput.PlayerButtonDown("Jump"),
+            "mouse ownership retains native axes and button values after recipe consumption");
+        ControllerInputOwnership.Configure(() => true);
+        GameScript.inventoryOpen = false;
+        recipeInput.BeginFrame(); Time.frameCount++;
+        Check(!ControllerGameplayInput.IsActionConsumed("PrimaryAction") && !ControllerGameplayInput.IsActionConsumed("Jump"),
+            "recipe consumption expires outside its inventory frame");
+        Input.Axes.Clear(); Input.Down.Clear();
         Console.WriteLine("Inventory input ownership: " + checks + " checks passed.");
     }
 }

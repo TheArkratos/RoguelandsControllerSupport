@@ -7,6 +7,7 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../ControllerCombatGuideStub.cs" />
     <Reference Include="0Harmony">
       <HintPath>$(HOME)/.local/share/Steam/steamapps/common/Roguelands/Roguelands_Data/Managed/0Harmony.dll</HintPath>
     </Reference>

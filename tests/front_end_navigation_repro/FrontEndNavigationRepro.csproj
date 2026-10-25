@@ -14,6 +14,7 @@
     <Compile Include="../../src/BindingConfig.cs" Link="BindingConfig.cs" />
     <Compile Include="../../src/JoystickInputState.cs" Link="JoystickInputState.cs" />
     <Compile Include="../../src/RawJoystickEvent.cs" Link="RawJoystickEvent.cs" />
+    <Compile Include="../../../../GameReference/Generated/Assembly-CSharp/ButtonMenu.cs" Link="NativeButtonMenu.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Stubs.cs" />
   </ItemGroup>

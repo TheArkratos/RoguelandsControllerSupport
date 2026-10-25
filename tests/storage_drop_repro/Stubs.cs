@@ -120,6 +120,17 @@ namespace UnityEngine
     }
 }
 
+// This storage-only fixture has no native hover components. The front-end
+// fixture links the real generated ButtonMenu for material/sound behavior.
+public class ButtonMenu : UnityEngine.Object
+{
+    public UnityEngine.GameObject gameObject;
+    public bool isPlanet, storageButton;
+    public UnityEngine.Object buttonSelect;
+    public void OnMouseEnter() { }
+    public void OnMouseExit() { }
+}
+
 public class Menuu : UnityEngine.Object
 {
     public UnityEngine.GameObject menuDeleteChar, menuStuffSelect, menuCreateCharacter;
@@ -133,6 +144,8 @@ public class MenuScript : UnityEngine.Object
 }
 public class GameScript : UnityEngine.Object
 {
+    public void SwapItemCraft(int slot) { throw new System.NotSupportedException("Unexpected Alchemy action in non-Alchemy fixture"); }
+    public System.Collections.IEnumerator ShiftClickCraft(int slot) { throw new System.NotSupportedException("Unexpected Alchemy transfer in non-Alchemy fixture"); }
     public void SelectPage(int page) { if (page <= storageLevel) currentStoragePage = page; }
     public static bool inventoryOpen = true, pausing, dead, buildMode;
     public UnityEngine.GameObject menuPause, inventoryMain, inventoryBar, menuStorage,
@@ -190,7 +203,7 @@ namespace ControllerSupport
         internal static SelectionCornerRenderer TryCreate(float scale, int order,
             Action<string> warning) { return new SelectionCornerRenderer(); }
         internal void Show(UnityEngine.Collider target) { }
-        internal void SetHeldItemIcon(int id, float width, float height) { }
+        internal void SetHeldItemIcon(int id, float width, float height, bool isChip = false) { }
         internal void Hide() { }
         internal void Dispose() { }
     }
@@ -205,7 +218,8 @@ namespace HarmonyLib
 {
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class HarmonyPatch : Attribute
-    { public HarmonyPatch(Type type, string method) { } }
+    { public HarmonyPatch() { } public HarmonyPatch(Type type, string method) { } }
+    [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyTargetMethods : Attribute { }
     [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyPrefix : Attribute { }
     [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyPostfix : Attribute { }
     [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyTranspiler : Attribute { }

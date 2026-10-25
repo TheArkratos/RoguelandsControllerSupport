@@ -12,8 +12,14 @@ namespace ControllerSupport
         private static readonly FieldInfo Holding = AccessToolsField("holdingItem");
         private static readonly FieldInfo Inventory = AccessToolsField("inventory");
         private static readonly FieldInfo Storage = AccessToolsField("storage");
+        private static readonly FieldInfo Craft = AccessToolsField("craft");
+        private static readonly FieldInfo CraftMenu = AccessToolsField("menuCraft");
+        private static readonly FieldInfo RecipeMenu = AccessToolsField("menuRecipe");
+        private static readonly FieldInfo CraftType = AccessToolsField("craftType");
         private static readonly FieldInfo Page = AccessToolsField("curStoragePage");
         private static readonly FieldInfo CombatChip = AccessToolsField("holdingCombatChip");
+        private static readonly FieldInfo CombatMenu = AccessToolsField("menuCombat");
+        private static readonly FieldInfo CombatChips = AccessToolsField("combatChips");
         private static readonly FieldInfo PortalMenu = AccessToolsField("menuPlanets");
         private static readonly FieldInfo EmblemForgeMenu = AccessToolsField("menuEmblemForge");
         private static readonly FieldInfo TrasherMenu = AccessToolsField("menuTrasher");
@@ -22,7 +28,9 @@ namespace ControllerSupport
         private static int scene = -1;
         private static int sourceSlot = -1;
         private static int sourcePage;
-        private static bool sourceStorage;
+        private static bool sourceStorage, sourceCraft, sourceChip;
+        private static GameObject sourceChipMenu;
+        private static int sourceCraftType = -1, interactionCraftType = -1;
         private static bool returning;
         private static bool dropping;
         private static bool uncertainDrop;
@@ -40,9 +48,34 @@ namespace ControllerSupport
         }
 
         internal static Item Held(GameScript game) { return game == null ? null : Holding.GetValue(game) as Item; }
+        // Combat chips deliberately use q=0; only the native chip flag makes
+        // that ID a held chip. Ordinary zero-quantity items remain empty.
+        internal static bool IsHoldingChip(GameScript game)
+        {
+            Item item = Held(game);
+            return game != null && CombatChip != null && (bool)CombatChip.GetValue(game) &&
+                item != null && item.id > 0;
+        }
+        internal static bool HasHeldItem(GameScript game)
+        { return IsHoldingChip(game) || !Empty(Held(game)); }
+        private static GameObject ChipRoot(GameScript game)
+        { return game == null || CombatMenu == null ? null : CombatMenu.GetValue(game) as GameObject; }
         private static bool Empty(Item item) { return item == null || item.id == 0 || item.q <= 0; }
         private static Item EmptyItem() { return new Item(0, 0, 0, 0, 0, new int[3], new int[3]); }
         internal static int CurrentPage(GameScript game) { return (int)Page.GetValue(game); }
+
+        private static GameObject CraftingRoot(GameScript game)
+        {
+            if (game == null || CraftType == null) return null;
+            int kind = (int)CraftType.GetValue(game);
+            if (kind != 0 && kind != 1) return null;
+            GameObject pane = CraftMenu == null ? null : CraftMenu.GetValue(game) as GameObject;
+            GameObject recipes = RecipeMenu == null ? null : RecipeMenu.GetValue(game) as GameObject;
+            // Keep a stable opener identity when the recipe book replaces the
+            // ingredient pane; the original station may already be out of range.
+            bool open = pane != null && pane.activeSelf || recipes != null && recipes.activeSelf;
+            return open ? pane ?? recipes : null;
+        }
 
         internal static void ObserveContext(GameScript game)
         {
@@ -62,18 +95,23 @@ namespace ControllerSupport
             GameObject forge = EmblemForgeMenu == null ? null : EmblemForgeMenu.GetValue(game) as GameObject;
             GameObject trasher = TrasherMenu == null ? null : TrasherMenu.GetValue(game) as GameObject;
             GameObject prism = PrismMenu == null ? null : PrismMenu.GetValue(game) as GameObject;
+            GameObject crafting = CraftingRoot(game);
+            GameObject chips = ChipRoot(game);
             GameObject root = !GameScript.inventoryOpen ? null
                 : game.menuStorage != null && game.menuStorage.activeSelf ? game.menuStorage
                 : portal != null && portal.activeSelf ? portal
                 : forge != null && forge.activeSelf ? forge
                 : trasher != null && trasher.activeSelf ? trasher
-                : prism != null && prism.activeSelf ? prism : null;
-            if (!ReferenceEquals(root, interactionRoot))
+                : prism != null && prism.activeSelf ? prism
+                : chips != null && chips.activeSelf ? chips : crafting;
+            int craftingType = root != null && ReferenceEquals(root, crafting) ? (int)CraftType.GetValue(game) : -1;
+            if (!ReferenceEquals(root, interactionRoot) || interactionCraftType != craftingType)
             {
                 // A shared inventory pane may belong to a chest, portal console
                 // or item conversion station. Capture its opener once, never the new interaction
                 // target encountered while walking out of the original range.
                 interactionRoot = root;
+                interactionCraftType = craftingType;
                 interactionCaptured = false;
                 if (root != null && PlayerScript.curInteractObj != null)
                 {
@@ -81,24 +119,44 @@ namespace ControllerSupport
                     interactionCaptured = true;
                 }
             }
-            if (Empty(Held(game))) sourceSlot = -1;
+            if (!HasHeldItem(game)) sourceSlot = -1;
         }
 
         // Called around native methods, including physical mouse actions. Tracking
         // needs no storage reads and therefore remains correct inside SixBySix's
         // nested temporary projection of the sixth row during GameScript.Update.
         internal static void RecordSource(GameScript game, int slot, int page, bool storage)
+        { RecordSource(game, slot, page, storage, false); }
+
+        internal static void RecordCraftSource(GameScript game, int slot)
+        { RecordSource(game, slot, 0, false, true); }
+
+        internal static void RecordChipSource(GameScript game, int slot)
         {
             ObserveContext(game);
-            if (returning || Empty(Held(game))) return;
+            if (returning || !IsHoldingChip(game)) return;
+            sourceSlot = slot;
+            sourceStorage = sourceCraft = false;
+            sourceCraftType = -1;
+            sourceChip = true;
+            sourceChipMenu = ChipRoot(game);
+        }
+
+        private static void RecordSource(GameScript game, int slot, int page, bool storage, bool crafting)
+        {
+            ObserveContext(game);
+            if (returning || !HasHeldItem(game)) return;
             sourceSlot = slot;
             sourcePage = page;
             sourceStorage = storage;
+            sourceCraft = crafting;
+            sourceChip = false; sourceChipMenu = null;
+            sourceCraftType = crafting && CraftType != null ? (int)CraftType.GetValue(game) : -1;
         }
 
         internal static void ClearIfEmpty(GameScript game)
         {
-            if (ReferenceEquals(owner, game) && Empty(Held(game))) sourceSlot = -1;
+            if (ReferenceEquals(owner, game) && !HasHeldItem(game)) sourceSlot = -1;
         }
 
         internal static bool TryReturn(GameScript game, out string reason)
@@ -106,12 +164,17 @@ namespace ControllerSupport
             ObserveContext(game);
             reason = null;
             Item held = Held(game);
-            if (Empty(held)) return true;
+            if (!HasHeldItem(game)) return true;
             if (uncertainDrop) { reason = "Drop outcome is uncertain; inspect the item before continuing."; return false; }
-            if (CombatChip != null && (bool)CombatChip.GetValue(game))
-            { reason = "Combat Chip return is not supported yet."; return false; }
+            if (IsHoldingChip(game)) return ReturnChip(game, out reason);
+            if (sourceChip)
+            { reason = "The held item's original type is unavailable."; return false; }
             if (sourceSlot < 0) { reason = "The held item's source is unavailable."; return false; }
-            Item[] items = (Item[])(sourceStorage ? Storage : Inventory).GetValue(game);
+            if (sourceCraft && (!GameScript.inventoryOpen || CraftingRoot(game) == null || Craft == null ||
+                CraftType == null || sourceCraftType != (int)CraftType.GetValue(game)))
+            { reason = "The original crafting station is unavailable."; return false; }
+            FieldInfo source = sourceCraft ? Craft : sourceStorage ? Storage : Inventory;
+            Item[] items = source == null ? null : source.GetValue(game) as Item[];
             int index = sourceStorage ? MapStorageSlot(sourcePage, sourceSlot, items == null ? 0 : items.Length) : sourceSlot;
             if (items == null || index < 0 || index >= items.Length)
             { reason = "The original slot is unavailable."; return false; }
@@ -124,7 +187,19 @@ namespace ControllerSupport
             try
             {
                 if (sourceStorage) Page.SetValue(game, sourcePage);
-                if (sourceStorage)
+                if (sourceCraft)
+                {
+                    // Return only the complete, still-held native item to its
+                    // exact source, including the output slot. Native placement
+                    // retains CraftCheck and loader metadata handling.
+                    string method = empty ? "PlaceItemCraft" : "CombineItemCraft";
+                    MethodInfo placement = typeof(GameScript).GetMethod(method,
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                        null, new[] { typeof(int) }, null);
+                    if (placement == null) { reason = "Crafting return is unavailable."; return false; }
+                    placement.Invoke(game, new object[] { sourceSlot });
+                }
+                else if (sourceStorage)
                 {
                     if (empty) game.PlaceItemStorage(sourceSlot); else game.CombineItemStorage(sourceSlot);
                 }
@@ -132,7 +207,7 @@ namespace ControllerSupport
                 {
                     if (empty) game.PlaceItem(sourceSlot); else game.CombineItem(sourceSlot);
                 }
-                if (!Empty(Held(game)))
+                if (HasHeldItem(game))
                 { reason = "The original slot rejected the return."; return false; }
                 sourceSlot = -1;
                 PlaySound(game, "Au/confirm");
@@ -142,7 +217,7 @@ namespace ControllerSupport
             {
                 // Native placement may have completed before a cosmetic refresh
                 // threw. Never refund a copy and risk duplicating the real item.
-                if (Empty(Held(game))) { sourceSlot = -1; return true; }
+                if (!HasHeldItem(game)) { sourceSlot = -1; return true; }
                 reason = "The item could not be returned safely.";
                 return false;
             }
@@ -155,6 +230,43 @@ namespace ControllerSupport
             }
         }
 
+        private static bool ReturnChip(GameScript game, out string reason)
+        {
+            reason = null;
+            GameObject menu = ChipRoot(game);
+            int[] chips = CombatChips == null ? null : CombatChips.GetValue(game) as int[];
+            if (!sourceChip || sourceSlot < 0)
+            { reason = "The held chip's source is unavailable."; return false; }
+            if (!GameScript.inventoryOpen || menu == null || !menu.activeSelf ||
+                !ReferenceEquals(menu, sourceChipMenu) || chips == null || sourceSlot >= chips.Length)
+            { reason = "The original Combat Chip menu is unavailable."; return false; }
+            if (chips[sourceSlot] != 0)
+            { reason = "The original chip slot is occupied."; return false; }
+            MethodInfo placement = typeof(GameScript).GetMethod("PlaceCombatChip",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, new[] { typeof(int) }, null);
+            if (placement == null) { reason = "Combat Chip return is unavailable."; return false; }
+            returning = true;
+            try
+            {
+                // The native method and loader hooks own equip effects and stats.
+                placement.Invoke(game, new object[] { sourceSlot });
+                if (HasHeldItem(game)) { reason = "The original chip slot rejected the return."; return false; }
+                sourceSlot = -1;
+                PlaySound(game, "Au/confirm");
+                return true;
+            }
+            catch (Exception)
+            {
+                // A cosmetic callback can fail after placement committed. Do
+                // not refund a copy of a chip already equipped by the native path.
+                if (!HasHeldItem(game)) { sourceSlot = -1; return true; }
+                reason = "The chip could not be returned safely.";
+                return false;
+            }
+            finally { returning = false; }
+        }
+
         internal static int MapStorageSlot(int page, int slot, int length)
         {
             if (page < 0 || page >= 12 || slot < 0 || slot >= (length >= 432 ? 36 : 30)) return -1;
@@ -164,7 +276,7 @@ namespace ControllerSupport
         internal static bool TryDropAbovePlayer(GameScript game, out string reason)
         {
             ObserveContext(game);
-            if (Empty(Held(game))) { reason = null; return true; }
+            if (!HasHeldItem(game)) { reason = null; return true; }
             if (MenuScript.player == null) { reason = "Player position is unavailable."; return false; }
             return Drop(game, MenuScript.player.transform.position + new Vector3(0f, 3f, 0f), out reason);
         }
@@ -214,10 +326,9 @@ namespace ControllerSupport
         {
             reason = null;
             if (dropping || uncertainDrop) { reason = "A drop is already in progress or needs inspection."; return false; }
-            if (CombatChip != null && (bool)CombatChip.GetValue(game))
-            { reason = "Combat Chip dropping is not supported yet."; return false; }
+            bool isChip = IsHoldingChip(game);
             Item held = Held(game);
-            if (Empty(held)) return true;
+            if (!HasHeldItem(game)) return true;
             if (!captureReady)
             { reason = "Safe network drop capture is unavailable; the held item was preserved."; return false; }
             capturedDrops.Clear();
@@ -227,7 +338,7 @@ namespace ControllerSupport
             {
                 // GadgetCore serializes extra data and host IDs and uses its native
                 // network Init RPC. Do not replace this with a local visual spawn.
-                ItemScript dropped = GadgetCoreAPI.DropItem(position, GadgetCoreAPI.CopyItem(held));
+                ItemScript dropped = GadgetCoreAPI.DropItem(position, GadgetCoreAPI.CopyItem(held), isChip);
                 if (dropped == null)
                 {
                     uncertainDrop = !RollBackDrop();
@@ -242,6 +353,7 @@ namespace ControllerSupport
                     return false;
                 }
                 Holding.SetValue(game, EmptyItem());
+                if (isChip) CombatChip.SetValue(game, false);
                 sourceSlot = -1;
                 try { game.RefreshHoldingSlot(); } catch { }
                 return true;
@@ -279,8 +391,10 @@ namespace ControllerSupport
             sourcePage = 0;
             scene = -1;
             interactionRoot = null;
+            sourceChipMenu = null;
+            sourceCraftType = interactionCraftType = -1;
             interactionPosition = new Vector3();
-            sourceStorage = returning = dropping = uncertainDrop = interactionCaptured = false;
+            sourceStorage = sourceCraft = sourceChip = returning = dropping = uncertainDrop = interactionCaptured = false;
         }
     }
 }

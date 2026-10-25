@@ -474,8 +474,80 @@ internal static class Program
         ControllerFrontEndMenus.Reset(); Physics.Hit = null;
         ControllerInputOwnership.Configure(() => true);
     }
+    private static ButtonMenu Highlight(Collider target)
+    {
+        var obj=target.gameObject;
+        var button=obj.AddComponent<ButtonMenu>(); button.button=new Material(); button.buttonSelect=new Material();
+        obj.AddComponent<Renderer>().material=button.button; obj.AddComponent<AudioSource>();
+        button.txt[0]=new GameObject("text").AddComponent<TextMesh>(); button.txt[0].gameObject.AddComponent<Animation>();
+        return button;
+    }
+    private static void NativeHighlights()
+    {
+        bool active=true; ControllerInputOwnership.Configure(()=>active); Physics.Hit=null; Input.Left=Input.Right=false;
+        var root=new GameObject("main"); var play=Add(root,"bPlay",0,2); var data=Add(root,"bData",0,1);
+        var playButton=Highlight(play); var dataButton=Highlight(data); var title=new Menuu{menuMain=root}; var pad=ConnectedState();
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null); ControllerFrontEndMenus.Begin(title);
+        Assert(play.gameObject.GetComponent<Renderer>().material==playButton.buttonSelect,"main uses actual native ButtonMenu highlight on default");
+        Assert(SelectionCornerRenderer.Visible==null,"native highlighted target has no corners");
+        Assert(!FrontEndNativeHoverPatch.Prefix(playButton)&&!FrontEndNativeHoverPatch.Prefix(dataButton),
+            "Unity physical hover callbacks cannot clear or compete with controller selection");
+        int hoverSounds=play.gameObject.GetComponent<AudioSource>().Plays;
+        ControllerFrontEndMenus.Begin(title);
+        Assert(play.gameObject.GetComponent<AudioSource>().Plays==hoverSounds,"idle selection does not replay native hover sound");
+        Axis(pad,7,1); ControllerFrontEndMenus.Begin(title);
+        Assert(play.gameObject.GetComponent<Renderer>().material==playButton.button&&data.gameObject.GetComponent<Renderer>().material==dataButton.buttonSelect,
+            "navigation exits old and enters new native material");
+        active=false; Physics.Hit=play; ControllerFrontEndMenus.MousePosition();
+        Assert(data.gameObject.GetComponent<Renderer>().material==dataButton.button&&play.gameObject.GetComponent<Renderer>().material==playButton.buttonSelect,
+            "same-frame handoff restores native physical hover");
+        Assert(FrontEndNativeHoverPatch.Prefix(playButton),"native Unity hover callbacks resume on mouse handoff");
+        active=true; Physics.Hit=null; Axis(pad,7,0); ControllerFrontEndMenus.Begin(title);
+        active=false; Physics.Hit=data;
+        int mouseSound=data.gameObject.GetComponent<AudioSource>().Plays;
+        if(FrontEndNativeHoverPatch.Prefix(dataButton)) dataButton.OnMouseEnter();
+        Assert(data.gameObject.GetComponent<AudioSource>().Plays==mouseSound+1,
+            "Unity mouse enter before menu update plays native sound only once");
+        Assert(play.gameObject.GetComponent<Renderer>().material==playButton.button&&data.gameObject.GetComponent<Renderer>().material==dataButton.buttonSelect,
+            "Unity mouse callback restores physical highlight and clears controller material");
+        ControllerFrontEndMenus.Reset(); Physics.Hit=null; ControllerInputOwnership.Configure(()=>true);
+
+        root=new GameObject("characters");
+        var last=Add(root,"bs5",10,0); var first=Add(root,"bs0",0,10);
+        var lastButton=Highlight(last); var firstButton=Highlight(first);
+        lastButton.OnMouseEnter(); Physics.Hit=last;
+        title=new Menuu{menuCharSelect=root}; pad=ConnectedState();
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null); ControllerFrontEndMenus.Begin(title);
+        AssertSelected("native highlight preserves top-left character default",first);
+        Assert(first.gameObject.GetComponent<Renderer>().material==firstButton.buttonSelect&&last.gameObject.GetComponent<Renderer>().material==lastButton.button,
+            "character default uses native highlight and clears preexisting physical hover");
+        Assert(SelectionCornerRenderer.Visible==null,"character native highlight replaces corners");
+        int animations=firstButton.txt[0].gameObject.GetComponent<Animation>().Plays;
+        Assert(animations==1,"native character text animation runs once on enter");
+        var options=new GameObject("options"); var back=Add(options,"bBack",0,0); var backButton=Highlight(back);
+        root.activeInHierarchy=false; title.menuOptions=options; Physics.Hit=null; ControllerFrontEndMenus.Begin(title);
+        Assert(first.gameObject.GetComponent<Renderer>().material==firstButton.button,"context switch exits previous native highlight");
+        Assert(SelectionCornerRenderer.Visible==back&&back.gameObject.GetComponent<Renderer>().material==backButton.button,
+            "outside requested screens existing corners remain authoritative");
+        Assert(FrontEndNativeHoverPatch.Prefix(backButton),"outside requested screens native callbacks remain untouched");
+        ControllerFrontEndMenus.Reset();
+
+        root=new GameObject("modeSelect"); var single=Add(root,"bSingleplayer",0,2); var multi=Add(root,"bMultiplayer",0,1);
+        var singleButton=Highlight(single); var multiButton=Highlight(multi); var modes=new MenuScript{menu=root};
+        pad=ConnectedState(); ControllerFrontEndMenus.Configure(()=>pad,Config(),null); ControllerFrontEndMenus.Begin(modes);
+        Assert(single.gameObject.GetComponent<Renderer>().material==singleButton.buttonSelect,"singleplayer selection uses native highlight");
+        Axis(pad,7,1); ControllerFrontEndMenus.Begin(modes);
+        Assert(multi.gameObject.GetComponent<Renderer>().material==multiButton.buttonSelect&&SelectionCornerRenderer.Visible==null,
+            "multiplayer selection uses native highlight without corners");
+        var noHighlight=Add(root,"bBack",0,0); Axis(pad,7,0); ControllerFrontEndMenus.Begin(modes);
+        Axis(pad,7,1); ControllerFrontEndMenus.Begin(modes);
+        Assert(SelectionCornerRenderer.Visible==noHighlight&&multi.gameObject.GetComponent<Renderer>().material==multiButton.button,
+            "target without native highlight falls back to corners and exits old material");
+        ControllerFrontEndMenus.Reset(); Physics.Hit=null;
+    }
     private static int Main()
     {
+        NativeHighlights();
         OwnershipHandoff();
         CharacterHitboxes();
         FrontEndDPadCoverage();CharacterEntryAndHandoff();NativeClicksAndExclusions();

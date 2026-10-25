@@ -18,7 +18,7 @@ namespace UnityEngine
  public enum TextureFormat{ARGB32}public enum FilterMode{Point}public enum TextureWrapMode{Clamp}
  public class Sprite : Object {public Bounds bounds;public static Sprite Create(Texture2D texture,Rect rect,Vector2 pivot,float ppu){return new Sprite{bounds=new Bounds{min=new Vector3(-pivot.x*rect.width/ppu,-pivot.y*rect.height/ppu,0),max=new Vector3((1-pivot.x)*rect.width/ppu,(1-pivot.y)*rect.height/ppu,0)}};}}
  public class SpriteRenderer : Object {public Color color=Color.white;public bool enabled=true;public int sortingOrder;public Sprite sprite;public Transform transform;public Bounds bounds{get{Vector3 p=transform.position,s=transform.lossyScale;return new Bounds{min=new Vector3(p.x+sprite.bounds.min.x*s.x,p.y+sprite.bounds.min.y*s.y,p.z),max=new Vector3(p.x+sprite.bounds.max.x*s.x,p.y+sprite.bounds.max.y*s.y,p.z)};}}}
- public static class Resources{public static Object Load(string name){return new Material{mainTexture=new Texture2D(32,32,TextureFormat.ARGB32,false)};}}public static class Debug{public static void LogWarning(string message){throw new Exception(message);}}
+ public static class Resources{public static string LastPath; public static int Loads;public static Object Load(string name){LastPath=name;Loads++;return new Material{mainTexture=new Texture2D(32,32,TextureFormat.ARGB32,false)};}}public static class Debug{public static void LogWarning(string message){throw new Exception(message);}}
 
  public class MonoBehaviour : Object {}
  public struct Vector2 {public float x,y; public Vector2(float a,float b){x=a;y=b;}}
@@ -61,4 +61,4 @@ namespace UnityEngine
  }
 }
 public class Item {public int id,q;}
-public class GameScript : UnityEngine.Object {public static bool inventoryOpen,pausing; public UnityEngine.GameObject inventoryMain=new UnityEngine.GameObject("inventory"); private Item holdingItem; public void Hold(int id,int q) {holdingItem = new Item {id=id,q=q};} }
+public class GameScript : UnityEngine.Object {public static bool inventoryOpen,pausing; public bool holdingCombatChip; public UnityEngine.GameObject menuCombat=new UnityEngine.GameObject("chips"){activeInHierarchy=false}; public UnityEngine.GameObject inventoryMain=new UnityEngine.GameObject("inventory"); private Item holdingItem; public void Hold(int id,int q) {holdingItem = new Item {id=id,q=q};} }

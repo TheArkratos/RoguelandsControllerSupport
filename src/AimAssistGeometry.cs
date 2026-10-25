@@ -105,6 +105,53 @@ namespace ControllerSupport
             return false;
         }
 
+        // Presentation exposes the exact same viewport/cone intersection used
+        // for target eligibility; it does not select targets or mutate aim.
+        internal static Vector2[] VisibleConePolygon(Vector2 origin, Vector2 axis,
+            Vector2 minViewport, Vector2 maxViewport)
+        {
+            double ax, ay;
+            if (!ValidView(origin, axis, minViewport, maxViewport, out ax, out ay) ||
+                minViewport.x >= maxViewport.x || minViewport.y >= maxViewport.y)
+                return new Vector2[0];
+            var viewport = new List<Point> {
+                new Point(minViewport.x, minViewport.y), new Point(maxViewport.x, minViewport.y),
+                new Point(maxViewport.x, maxViewport.y), new Point(minViewport.x, maxViewport.y)
+            };
+            return ToVertices(ClipVisibleCone(viewport, origin, ax, ay, minViewport, maxViewport));
+        }
+
+        // The real screen is a convex quadrilateral in world XY while the
+        // native boss camera rolls. Clip that footprint, never its larger AABB.
+        internal static Vector2[] VisibleConePolygon(Vector2 origin, Vector2 axis, Vector2[] viewport)
+        {
+            double ax, ay;
+            if (!Finite(origin) || !Normalize(axis, out ax, out ay) ||
+                viewport == null || viewport.Length < 3) return new Vector2[0];
+            var points = new List<Point>(viewport.Length);
+            foreach (Vector2 vertex in viewport)
+            {
+                if (!Finite(vertex)) return new Vector2[0];
+                points.Add(new Point(vertex.x, vertex.y));
+            }
+            List<Point> polygon = Hull(points);
+            return polygon.Count < 3 ? new Vector2[0] : ToVertices(ClipCone(polygon, origin, ax, ay));
+        }
+
+        private static Vector2[] ToVertices(List<Point> polygon)
+        {
+            var result = new List<Vector2>(polygon.Count);
+            foreach (Point point in polygon)
+            {
+                Vector2 vertex = new Vector2((float)point.X, (float)point.Y);
+                if (result.Count == 0 || vertex.x != result[result.Count - 1].x ||
+                    vertex.y != result[result.Count - 1].y) result.Add(vertex);
+            }
+            if (result.Count > 1 && result[0].x == result[result.Count - 1].x &&
+                result[0].y == result[result.Count - 1].y) result.RemoveAt(result.Count - 1);
+            return result.ToArray();
+        }
+
         private static double SegmentDistanceSquared(Point point, Point a, Point b)
         {
             double dx = b.X - a.X, dy = b.Y - a.Y;
@@ -131,6 +178,11 @@ namespace ControllerSupport
             polygon = Clip(polygon, -1, 0, maxViewport.x, 0);
             polygon = Clip(polygon, 0, 1, 0, minViewport.y);
             polygon = Clip(polygon, 0, -1, 0, maxViewport.y);
+            return ClipCone(polygon, origin, ax, ay);
+        }
+
+        private static List<Point> ClipCone(List<Point> polygon, Vector2 origin, double ax, double ay)
+        {
             polygon = Clip(polygon, ax, ay, origin.x, origin.y);
             double tangent = Math.Tan(HalfAngle);
             polygon = Clip(polygon, tangent * ax + ay, tangent * ay - ax, origin.x, origin.y);

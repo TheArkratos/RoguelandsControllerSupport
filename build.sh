@@ -40,6 +40,7 @@ dotnet "$csc_dll" \
     "$project_dir/src/ControllerGameplayActions.cs" \
     "$project_dir/src/GameplayInputPatches.cs" \
     "$project_dir/src/ControllerAim.cs" \
+    "$project_dir/src/ControllerCombatGuide.cs" \
     "$project_dir/src/AimAssistGeometry.cs" \
     "$project_dir/src/AimLeadPrediction.cs" \
     "$project_dir/src/StaffTargetCrosshair.cs" \
@@ -54,6 +55,8 @@ dotnet "$csc_dll" \
     "$project_dir/src/InventorySelectionNavigator.cs" \
     "$project_dir/src/PortalMenuContext.cs" \
     "$project_dir/src/ItemConversionContext.cs" \
+    "$project_dir/src/CraftingMenuContext.cs" \
+    "$project_dir/src/CombatChipMenuContext.cs" \
     "$project_dir/src/ControllerMenuSelection.cs" \
     "$project_dir/src/InventoryItemLifecycle.cs" \
     "$project_dir/src/InventoryLifecyclePatches.cs" \

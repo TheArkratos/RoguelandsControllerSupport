@@ -43,7 +43,41 @@ internal static class Program {
   return glyph;
  }
  private static GameObject[] RedGlyphs()=>UnityEngine.Object.FindObjectsOfType<GameObject>().Where(g=>g.name=="ControllerSupport.StaffTargetCrosshair").ToArray();
+ private static void DebugPresentationToggle(){
+  ControllerInputOwnership.Configure(()=>true);
+  var indicatorType=typeof(ControllerAimAssist).GetNestedType("AimAssistIndicator",BindingFlags.NonPublic);
+  var render=indicatorType.GetMethod("OnGUI",BindingFlags.Instance|BindingFlags.NonPublic);
+  var instance=Activator.CreateInstance(indicatorType,true);
+  bool previousDebugLines=ControllerAimAssist.ControllerCombatModeDebugLinesEnabled;
+  try {
+  foreach(bool staff in new[]{false,true}){
+   Setup();Shader.Available.Clear();Shader.Available["Sprites/Default"]=new Shader{name="Sprites/Default",Color=true};
+   GameObject nativeRoot;var nativeGlyph=NativeGlyph(out nativeRoot);
+   var target=Enemy(8,.4f);Physics.Candidates=new[]{target};Projectile projectile=null;Vector3 assisted;
+   if(staff){GameScript.equippedIDs[0]=550;projectile=SpawnStaff(10,Vector3.zero);assisted=StaffTick(projectile);}
+   else{ControllerAimAssist.BeginAttack(new AttackToken{Player=local});assisted=Point();}
+   ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=true;GUI.Recorded.Clear();render.Invoke(instance,null);
+   Check(GUI.Recorded.Any(d=>d.Color.r==1&&d.Color.g==0&&d.Color.a==.7f),"enabled toggle draws diagnostic cone for "+(staff?"staff":"normal weapon"));
+   Check(GUI.Recorded.Any(d=>d.Color.r==1&&d.Color.g==1&&d.Color.b==0),"enabled toggle draws applied target outline for "+(staff?"staff":"normal weapon"));
+   if(!staff)Check(GUI.Recorded.Any(d=>d.Color.r==0&&d.Color.g==1&&d.Color.b==1),"normal weapon enabled diagnostics include cyan prediction marker");
+   int searches=Physics.Searches;ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=false;GUI.Recorded.Clear();render.Invoke(instance,null);
+   Check(GUI.Recorded.Count==1&&GUI.Recorded[0].Color.r==1&&GUI.Recorded[0].Color.g==0&&GUI.Recorded[0].Rect.width==6,"disabled debug lines leave only functional enabled square for "+(staff?"staff":"normal weapon"));
+   Check(Physics.Searches==searches&&ControllerAimAssist.Enabled,"disabled diagnostic rendering does not scan or disable assistance");
+   Vector3 after=staff?StaffTick(projectile):Point();Check(Math.Abs(after.x-assisted.x)<.00001&&Math.Abs(after.y-assisted.y)<.00001,"diagnostic toggle leaves actual assisted aim unchanged");
+   if(staff)Check(RedGlyphs().Any(g=>g.activeInHierarchy),"diagnostic toggle preserves functional red staff target crosshair");
+   ControllerInputOwnership.Configure(()=>false);GUI.Recorded.Clear();render.Invoke(instance,null);Check(GUI.Recorded.Count==0,"disabled diagnostics still respect shared mouse ownership");
+   ControllerInputOwnership.Configure(()=>true);ControllerAim.Configure(()=>pad);Next();
+   if(staff)StaffTick(projectile);ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=true;GUI.Recorded.Clear();render.Invoke(instance,null);
+   Check(GUI.Recorded.Count>1,"diagnostic flag can re-enable overlays for "+(staff?"staff":"normal weapon"));
+   ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=false;ControllerAimAssist.Configure();Check(!ControllerAimAssist.ControllerCombatModeDebugLinesEnabled,"adapter configuration does not overwrite debug flag");
+   ControllerAimAssist.Reset();Check(!ControllerAimAssist.ControllerCombatModeDebugLinesEnabled,"session reset does not overwrite static debug preference");
+   UnityEngine.Object.Destroy(nativeGlyph);UnityEngine.Object.Destroy(nativeRoot);ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=true;
+  }
+  } finally {ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=previousDebugLines;}
+ }
  private static void Main(){
+  Check(!ControllerAimAssist.ControllerCombatModeDebugLinesEnabled,"diagnostic lines default disabled");
+  ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=true; // Explicit opt-in for legacy diagnostic rendering checks.
   // Exercise real effect/render entry points with shared mouse ownership while
   // the raw controller remains connected and its aim stick remains held.
   Setup();bool controllerOwner=true;ControllerInputOwnership.Configure(()=>controllerOwner);
@@ -260,6 +294,8 @@ internal static class Program {
   Check(indicators==1&&UnityEngine.Object.FindObjectsOfType<GameObject>().Count(g=>g.name=="ControllerSupport.AimAssistIndicator")==1,"Session initialization creates only one enabled indicator");
   ControllerAimAssist.Toggle();ControllerAimAssist.Configure();Check(!ControllerAimAssist.Enabled,"L3 can disable default-on assistance and adapter refresh preserves that choice");
   ControllerAimAssist.Reset();ControllerAimAssist.StartSession();Check(ControllerAimAssist.Enabled,"Next gadget session starts enabled again");ControllerAimAssist.Reset();
+  ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=false;
+  DebugPresentationToggle();
   Console.WriteLine("Aim assist integration: "+checks+" checks passed.");
  }
 }

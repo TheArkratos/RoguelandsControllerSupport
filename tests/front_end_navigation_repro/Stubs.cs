@@ -15,6 +15,10 @@ namespace UnityEngine
         public bool activeInHierarchy = true;
         public int layer;
         public Collider collider;
+        private readonly List<Component> components = new List<Component>();
+        public T AddComponent<T>() where T : Component, new() { var value = new T { gameObject = this }; components.Add(value); return value; }
+        public T GetComponent<T>() where T : class { if (collider is T match) return match; return components.Find(c => c is T) as T; }
+        public void SetActive(bool active) { activeInHierarchy = active; }
         public GameObject(string name) { this.name = name; }
         public void AddChild(GameObject child) { children.Add(child); }
         public T[] GetComponentsInChildren<T>() where T : class
@@ -28,6 +32,21 @@ namespace UnityEngine
             return found.ToArray();
         }
     }
+    public class Component : Object
+    {
+        public GameObject gameObject;
+        public T GetComponent<T>() where T : class { return gameObject.GetComponent<T>(); }
+    }
+    public class MonoBehaviour : Component { public void StartCoroutine(System.Collections.IEnumerator routine) { } }
+    public class Material : Object { }
+    public class Renderer : Component { public Material material; }
+    public class AudioClip : Object { }
+    public class AudioSource : Component { public int Plays; public void PlayOneShot(AudioClip clip, float volume = 1f) { Plays++; } }
+    public class Animation : Component { public int Plays; public void Play(string name = null) { Plays++; } public void Stop() { } }
+    public class TextMesh : Component { }
+    public class WaitForSeconds { public WaitForSeconds(float seconds) { } }
+    public static class Random { public static int Range(int min, int max) { return min; } }
+    public static class Resources { public static Object Load(string path) { return new AudioClip(); } }
     public class Collider : Object
     {
         public GameObject gameObject;
@@ -97,6 +116,7 @@ namespace UnityEngine
 
 public class Menuu : UnityEngine.Object
 {
+    public static float soundLevel = 10;
     public UnityEngine.GameObject menuDeleteChar, menuStuffSelect, menuCreateCharacter;
     public UnityEngine.GameObject menuCharSelect, menuOptions, menuData, menuMain;
 }
@@ -122,9 +142,10 @@ namespace HarmonyLib
 {
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class HarmonyPatch : Attribute
-    { public HarmonyPatch(Type type, string method) { } }
+    { public HarmonyPatch() { } public HarmonyPatch(Type type, string method) { } }
     [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyPrefix : Attribute { }
     [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyPostfix : Attribute { }
+    [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyTargetMethods : Attribute { }
     [AttributeUsage(AttributeTargets.Method)] public sealed class HarmonyTranspiler : Attribute { }
     public class CodeInstruction
     {
@@ -150,8 +171,9 @@ namespace ControllerSupport
         public bool IsAlive { get { return true; } }
         public static SelectionCornerRenderer TryCreate(float scale, int order, Action<string> warn)
         { return new SelectionCornerRenderer(); }
-        public void Show(UnityEngine.Collider collider) { }
-        public void Hide() { }
-        public void Dispose() { }
+        public static UnityEngine.Collider Visible;
+        public void Show(UnityEngine.Collider collider) { Visible = collider; }
+        public void Hide() { Visible = null; }
+        public void Dispose() { Visible = null; }
     }
 }

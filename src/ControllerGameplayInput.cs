@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 
@@ -14,7 +15,7 @@ namespace ControllerSupport
         private static int frame = -1;
         private static int inventoryInputFrame = -1;
         private static int actionInputFrame = -1;
-        private static string consumedAction;
+        private static readonly HashSet<string> consumedActions = new HashSet<string>();
         private static JoystickInputState state;
         private static bool left, right, up, down;
         private static bool leftPressed, rightPressed, downPressed;
@@ -47,7 +48,7 @@ namespace ControllerSupport
             frame = -1;
             owned = false; ownershipEntryFrame = -1;
             inventoryInputFrame = actionInputFrame = -1;
-            consumedAction = null;
+            consumedActions.Clear();
             state = null;
             left = right = up = down = false;
             leftPressed = rightPressed = downPressed = false;
@@ -146,8 +147,9 @@ namespace ControllerSupport
         internal static void ConsumeActionForFrame(string action)
         {
             if (!ControllerInputOwnership.UsingController) { ResetFrame(); return; }
+            if (actionInputFrame != Time.frameCount) consumedActions.Clear();
             actionInputFrame = Time.frameCount;
-            consumedAction = action;
+            consumedActions.Add(action);
         }
 
         internal static bool IsActionConsumed(string action)
@@ -157,16 +159,30 @@ namespace ControllerSupport
                 ResetFrame();
                 return false;
             }
-            return actionInputFrame == Time.frameCount && bindings != null &&
-                consumedAction != null && bindings[consumedAction] != "Unbound" &&
-                bindings[action] == bindings[consumedAction];
+            return bindings != null && TokenConsumed(bindings[action]);
         }
 
         internal static bool PhysicalButtonConsumed(int button)
         {
-            return ControllerInputOwnership.UsingController && actionInputFrame == Time.frameCount && bindings != null &&
-                consumedAction != null && Refresh() && PhysicalButtonActive(button) &&
-                bindings[consumedAction] == "Joystick1Button" + button;
+            return ControllerInputOwnership.UsingController && TokenConsumed("Joystick1Button" + button) &&
+                Refresh() && PhysicalButtonActive(button);
+        }
+
+        private static bool TokenConsumed(string token)
+        {
+            if (!ControllerInputOwnership.UsingController || actionInputFrame != Time.frameCount ||
+                bindings == null || token == "Unbound") return false;
+            foreach (string action in consumedActions)
+                if (bindings[action] == token) return true;
+            return false;
+        }
+
+        private static bool ConsumedBindingHeld()
+        {
+            if (actionInputFrame != Time.frameCount || bindings == null) return false;
+            foreach (string action in consumedActions)
+                if (bindings.Held(action, state)) return true;
+            return false;
         }
 
         private static bool InventoryOwnsInput()
@@ -184,7 +200,7 @@ namespace ControllerSupport
         {
             return InventoryOwnsInput() && (BoundHeld("MenuActivate") || BoundHeld("MenuSecondary") ||
                 BoundHeld("MenuTransfer") || BoundHeld("MenuDrop") || BoundHeld("MenuCancel") ||
-                BoundHeld("Inventory") || BoundHeld("Pause"));
+                BoundHeld("Inventory") || BoundHeld("Pause") || ConsumedBindingHeld());
         }
 
         private static bool Bound(string action, int kind)
@@ -275,8 +291,7 @@ namespace ControllerSupport
             if (name == "Horizontal" && Refresh() && Math.Abs(state.MoveX) > DirectionThreshold)
                 return state.MoveX;
             if (name == "Attack" && Refresh() && (MenuInputHeld() ||
-                (actionInputFrame == Time.frameCount && consumedAction != null &&
-                 bindings != null && bindings[consumedAction] == "RightTrigger" && state.RightTriggerHeld))) return 0f;
+                (TokenConsumed("RightTrigger") && state.RightTriggerHeld))) return 0f;
             if (name != "Attack" || !Refresh() || !SafeActions() || !GameScript.combatMode ||
                 attackRequiresRelease || !BoundHeld("PrimaryAction")) return vanilla;
             // Existing PlayerScript.Update tests Attack < 0 and starts its

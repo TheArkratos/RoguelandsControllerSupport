@@ -13,7 +13,8 @@ namespace UnityEngine
         public static bool GetButtonDown(string name) { return Down.Contains(name); }
         public static bool GetButton(string name) { return false; }
         public static bool GetButtonUp(string name) { return false; }
-        public static float GetAxis(string name) { return 0f; }
+        internal static readonly Dictionary<string, float> Axes = new Dictionary<string, float>();
+        public static float GetAxis(string name) { float value; return Axes.TryGetValue(name, out value) ? value : 0f; }
     }
 
     public class GameObject

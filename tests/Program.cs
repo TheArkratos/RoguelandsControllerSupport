@@ -19,6 +19,7 @@ internal static class Program
         BindingConfig defaults = BindingConfig.Parse(BindingConfig.DefaultText.Split('\n'));
         CheckExportedGameplayPatches();
         CheckMenuBindings(defaults);
+        CheckRecipePagingBindings(defaults);
         CheckGameplayBindings(defaults);
         Equal("LeftStick", defaults["Move"]);
         Equal("LeftTrigger", defaults["Jump"]);
@@ -267,6 +268,37 @@ internal static class Program
         input.Clear();
         False(triggers.Held("MenuActivate", input));
         False(triggers.Pressed("MenuActivate", input));
+    }
+
+    private static void CheckRecipePagingBindings(BindingConfig defaults)
+    {
+        Equal("Joystick1Button4", defaults["MenuPreviousPage"]);
+        Equal("Joystick1Button5", defaults["MenuNextPage"]);
+        Equal("LB", defaults.Label("MenuPreviousPage"));
+        Equal("RB", defaults.Label("MenuNextPage"));
+        Equal("Unbound", BindingConfig.SafeDefaults()["MenuPreviousPage"]);
+        Equal("Unbound", BindingConfig.SafeDefaults()["MenuNextPage"]);
+        // Paging deliberately wins over these actions inside the recipe panel.
+        BindingConfig shared = BindingConfig.Parse(BindingConfig.DefaultText
+            .Replace("MenuNextPage = Joystick1Button5", "MenuNextPage = Joystick1Button0").Split('\n'));
+        Equal("Joystick1Button0", shared["MenuActivate"]);
+        Equal("Joystick1Button0", shared["MenuNextPage"]);
+        Reject(BindingConfig.DefaultText.Replace("MenuNextPage = Joystick1Button5",
+            "MenuNextPage = Joystick1Button4"), "recipe page directions cannot share one binding");
+        string legacy = BindingConfig.DefaultText.Replace("MenuPreviousPage = Joystick1Button4\n", "")
+            .Replace("MenuNextPage = Joystick1Button5\n", "");
+        string file = Path.Combine(Path.GetTempPath(), "ControllerSupportBindings-recipe-" + Guid.NewGuid().ToString("N") + ".ini");
+        try
+        {
+            File.WriteAllText(file, legacy);
+            BindingConfig loaded = BindingConfig.Load(file);
+            Equal("Joystick1Button4", loaded["MenuPreviousPage"]);
+            Equal("Joystick1Button5", loaded["MenuNextPage"]);
+            Equal(legacy, File.ReadAllText(file));
+        }
+        finally { if (File.Exists(file)) File.Delete(file); }
+        Equal("Unbound", BindingConfig.Parse(BindingConfig.DefaultText.Replace("MenuNextPage = Joystick1Button5",
+            "MenuNextPage = Unbound").Split('\n'))["MenuNextPage"]);
     }
 
     private static void CheckObsoleteCloseAim(BindingConfig defaults)

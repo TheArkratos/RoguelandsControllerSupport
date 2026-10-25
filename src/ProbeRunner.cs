@@ -20,10 +20,16 @@ namespace ControllerSupport
             ControllerInteractPrompt.Update(probe.UsingController);
         }
 
+        private void LateUpdate()
+        {
+            ControllerCombatGuide.UpdateVisual();
+        }
+
         private void OnDestroy()
         {
             if (probe != null) probe.Dispose();
             ControllerInteractPrompt.Reset();
+            ControllerCombatGuide.Reset();
             probe = null;
         }
     }

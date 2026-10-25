@@ -39,13 +39,14 @@ namespace GadgetCore.API
         public static bool ThrowSpawn;
         public static UnityEngine.Vector3 LastPosition;
         public static Item LastDrop;
+        public static bool LastIsChip;
         public static bool CanItemsStack(Item a, Item b) { return a.id == b.id && a.extra == b.extra && a.id < 300; }
         public static Item CopyItem(Item item) { return new Item(item.id, item.q) { extra = item.extra }; }
-        public static ItemScript DropItem(UnityEngine.Vector3 position, Item item)
+        public static ItemScript DropItem(UnityEngine.Vector3 position, Item item, bool isChip = false)
         {
             Drops++;
             LastPosition = position;
-            LastDrop = item;
+            LastDrop = item; LastIsChip = isChip;
             if (FailSpawn) return null;
             // Test-double equivalent of the injected call, not a replacement for
             // the production capture helper tested here.
@@ -89,9 +90,21 @@ public static class Menuu { public static float soundLevel = 10; }
 public class GameScript
 {
     public Item holdingItem;
-    public Item[] inventory = NewItems(45), storage = NewItems(432);
+    public Item[] inventory = NewItems(45), storage = NewItems(432), craft = NewItems(4);
+    public int craftType;
+    public UnityEngine.GameObject menuCraft = new UnityEngine.GameObject(), menuRecipe = new UnityEngine.GameObject();
     public int curStoragePage;
     public bool holdingCombatChip;
+    public bool exitingcombatmode;
+    public int slotID;
+    public int[] combatChips = new int[38];
+    public int ChipEquipCalls, ChipDequipCalls;
+    public UnityEngine.GameObject menuCombat = new UnityEngine.GameObject();
+    public void CombatChipMenu() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = menuTrasher.activeSelf = menuPrism.activeSelf = menuCraft.activeSelf = menuRecipe.activeSelf = false; menuCombat.activeSelf = true; inventoryOpen = true; }
+    public void SelectCombatChip(int slot) { if(exitingcombatmode) return; holdingItem=new Item(combatChips[slot],0); holdingCombatChip=true; combatChips[slotID]=0; ChipDequipCalls++; RefreshHoldingSlot(); }
+    public void SwapCombatChip(int slot) { int id=holdingItem.id; holdingItem.id=combatChips[slot];combatChips[slot]=id;ChipDequipCalls++;ChipEquipCalls++;RefreshHoldingSlot(); }
+    public void PlaceCombatChip(int slot) { if(RejectPlace) return; combatChips[slot]=holdingItem.id;holdingItem=new Item(0,0);holdingCombatChip=false;ChipEquipCalls++;RefreshHoldingSlot(); }
+
     public bool RejectPlace;
     public bool ThrowRefresh;
     public static bool inventoryOpen = true;
@@ -119,7 +132,17 @@ public class GameScript
     public void CombineItemStorage(int s) { storage[StorageIndex(s)].q += holdingItem.q; holdingItem.q = 0; }
     public void DropItem() { }
     public void CloseAllMenus() { }
-    public void SelectItemCraft(int s) { }
+    public void GearForge() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = menuTrasher.activeSelf = menuPrism.activeSelf = false; menuCraft.activeSelf = true; craftType = 0; inventoryOpen = true; }
+    public void Alchemy() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = menuTrasher.activeSelf = menuPrism.activeSelf = false; menuCraft.activeSelf = true; craftType = 1; inventoryOpen = true; }
+    public void SelectItemCraft(int s) { holdingItem = craft[s]; craft[s] = new Item(0, 0); }
+    public void SplitItemCraft(int s) { holdingItem = new Item(craft[s].id, craft[s].q / 2) { extra = craft[s].extra }; craft[s].q -= holdingItem.q; }
+    public void SwapItemCraft(int s) { Item prior = holdingItem; holdingItem = craft[s]; craft[s] = prior; }
+    public void PlaceItemCraft(int s) { if (RejectPlace) return; craft[s] = holdingItem; holdingItem = new Item(0, 0); RefreshHoldingSlot(); }
+    public void CombineItemCraft(int s) { craft[s].q += holdingItem.q; holdingItem.q = 0; }
+    public void Craft() { }
+    public void DropCraftItems() { }
+    public System.Collections.IEnumerator QuickCraft(int id, int q) { yield return null; }
+
     public void PlaceOneItem(int s) { }
     public void SelectItem(int s) { holdingItem = inventory[s]; inventory[s] = new Item(0, 0); }
     public void SelectItemStorage(int s) { holdingItem = storage[StorageIndex(s)]; storage[StorageIndex(s)] = new Item(0, 0); }

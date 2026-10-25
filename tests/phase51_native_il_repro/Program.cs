@@ -4,6 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using HarmonyLib;
 
 // Calls compiled production transpilers against the installed assembly's real IL.
@@ -45,7 +48,7 @@ internal static class Program
         foreach(string name in new[]{"AimAssistFactoryPatch","AimAssistIteratorPatch","AimAssistDirectPatch","AimAssistStaffSpawnPatch","AimAssistSkillPatch","AimAssistAtalantaPatch",
             "InventoryDropCapturePatch","InventoryMutationGuardPatch","InventorySourcePatch",
             "InventoryChestContextPatch","InventoryPortalContextPatch","InventoryHeldEmptyPatch",
-            "InventoryEmblemContextPatch","InventoryTrashContextPatch","InventoryPrismContextPatch"})
+            "InventoryEmblemContextPatch","InventoryTrashContextPatch","InventoryPrismContextPatch","InventoryAlchemyContextPatch","InventoryGearForgeContextPatch","InventoryChipSourcePatch","InventoryCombatChipContextPatch","FrontEndNativeHoverPatch"})
         {
             Type patch=inspected.GetType("ControllerSupport."+name,true);
             Check(exported.Contains(patch),"GadgetCore loader discovers exported patch "+name);
@@ -66,13 +69,29 @@ internal static class Program
             new[]{"InventoryHeldEmptyPatch","GameScript","RefreshHoldingSlot"},
             new[]{"InventoryEmblemContextPatch","GameScript","EmblemForge"},
             new[]{"InventoryTrashContextPatch","GameScript","Trash"},
-            new[]{"InventoryPrismContextPatch","GameScript","Prism"}})
+            new[]{"InventoryPrismContextPatch","GameScript","Prism"},
+            new[]{"InventoryAlchemyContextPatch","GameScript","Alchemy"},
+            new[]{"InventoryGearForgeContextPatch","GameScript","GearForge"},
+            new[]{"InventoryCombatChipContextPatch","GameScript","CombatChipMenu"}})
         {
             Type patch = inspected.GetType("ControllerSupport." + declaration[0], true);
             CustomAttributeData target = patch.GetCustomAttributesData().Single(a=>a.AttributeType.FullName=="HarmonyLib.HarmonyPatch");
             Check(target.ConstructorArguments.Count>=2 && ((Type)target.ConstructorArguments[0].Value).FullName==declaration[1]
                 && (string)target.ConstructorArguments[1].Value==declaration[2], "Actual lifecycle patch target declaration: "+declaration[0]);
         }
+        MethodBase[] hoverTargets = Targets("FrontEndNativeHoverPatch");
+        Check(hoverTargets.Length == 2 && hoverTargets.All(t => t.DeclaringType.FullName == "ButtonMenu")
+            && hoverTargets.Select(t => t.Name).OrderBy(n => n).SequenceEqual(new[] { "OnMouseEnter", "OnMouseExit" }),
+            "Native front-end hover patch targets exactly ButtonMenu enter and exit callbacks");
+        MethodInfo hoverPrefix = mod.GetType("ControllerSupport.FrontEndNativeHoverPatch", true).GetMethod("Prefix", All);
+        Check(hoverPrefix.ReturnType == typeof(bool) && hoverPrefix.GetParameters().Length == 1
+            && hoverPrefix.GetParameters()[0].ParameterType.FullName == "ButtonMenu",
+            "Native hover guard uses the actual button instance and boolean Harmony prefix contract");
+        MethodInfo hoverDispatch = mod.GetType("ControllerSupport.ControllerFrontEndMenus", true).GetMethod("DispatchNativeHover", All);
+        List<CodeInstruction> hoverCode = Read(hoverDispatch);
+        Check(hoverCode.Count(i => Call(i, "ButtonMenu", "OnMouseEnter")) == 1
+            && hoverCode.Count(i => Call(i, "ButtonMenu", "OnMouseExit")) == 1,
+            "Compiled front-end focus reuses native hover enter/exit handlers");
         Assembly loader=(Assembly)context.GetType().GetMethod("LoadFromAssemblyPath").Invoke(context,new object[]{Path.Combine(managed,"GadgetCore.dll")});
         Type prismRecipePatch=loader.GetType("GadgetCore.Patches.Patch_GameScript_PrismItem",true);
         MethodInfo prismRecipePrefix=prismRecipePatch.GetMethod("Prefix",All | BindingFlags.DeclaredOnly);
@@ -87,11 +106,13 @@ internal static class Program
         ((IDisposable)context).Dispose();
         MethodBase[] mutationTargets = Targets("InventoryMutationGuardPatch");
         Type inventoryGame = game.GetType("GameScript", true);
-        foreach (string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage","ForgeEmblem","TrashItem","PrismItem"})
+        foreach (string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage","ForgeEmblem","TrashItem","PrismItem",
+            "SelectItemCraft","SplitItemCraft","SwapItemCraft","PlaceItemCraft","PlaceOneItemCraft","CombineItemCraft",
+            "SelectCombatChip","PlaceCombatChip","SwapCombatChip"})
             Check(mutationTargets.Contains(inventoryGame.GetMethod(name,All,null,new[]{typeof(int)},null)), "Quarantine guards native mutation "+name+"(int)");
-        foreach (string name in new[]{"CloseAllMenus","DropItem"})
+        foreach (string name in new[]{"CloseAllMenus","DropItem","Craft","DropCraftItems"})
             Check(mutationTargets.Contains(inventoryGame.GetMethod(name,All,null,Type.EmptyTypes,null)), "Quarantine guards native "+name+"()");
-        MethodInfo[] queued = inventoryGame.GetNestedTypes(All).Where(t=>t.Name.Contains("ShiftClick") && typeof(System.Collections.IEnumerator).IsAssignableFrom(t))
+        MethodInfo[] queued = inventoryGame.GetNestedTypes(All).Where(t=>(t.Name.Contains("ShiftClick") || t.Name.Contains("QuickCraft")) && typeof(System.Collections.IEnumerator).IsAssignableFrom(t))
             .Select(t=>t.GetMethod("MoveNext",All)).Where(m=>m!=null&&m.ReturnType==typeof(bool)).ToArray();
         Check(queued.Length>0,"Real native ShiftClick iterators exist");
         foreach(MethodInfo move in queued) Check(mutationTargets.Contains(move),"Quarantine guards previously queued "+move.DeclaringType.Name);
@@ -126,9 +147,50 @@ internal static class Program
             && loaderUpdate.Contains("cILProcessor.RemoveInsns(iLRef2.GetRefByOffset(-20), 17)"),
             "Verified loader Update transpiler removes native vanilla-only Prism recipe eligibility block");
         MethodBase[] sourceTargets=Targets("InventorySourcePatch");
-        foreach(string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage"})
+        foreach(string name in new[]{"SelectItem","SplitItem","SwapItem","SelectItemStorage","SplitItemStorage","SwapItemStorage",
+            "SelectItemCraft","SplitItemCraft","SwapItemCraft"})
             Check(sourceTargets.Contains(inventoryGame.GetMethod(name,All,null,new[]{typeof(int)},null)),"Exact source tracking targets "+name);
-        Check(sourceTargets.Length==6,"Exact source tracking remains limited to six native held-item actions");
+        Check(sourceTargets.Length==9,"Exact source tracking covers nine inventory/storage/crafting pickup actions");
+        Type craftingContext = mod.GetType("ControllerSupport.CraftingMenuContext", true);
+        Check((int)craftingContext.GetField("MaximumQuickCraftQuantity", All).GetRawConstantValue() == 7,
+            "Controller quick-craft capacity reserve matches audited maximum seven");
+        List<CodeInstruction> recipeCode = Read(inventoryGame.GetMethod("GetRecipeItem", All));
+        int recipeRolls = 0, maximumQuantity = 0;
+        for (int i = 2; i < recipeCode.Count; i++)
+        {
+            if (!Call(recipeCode[i], "UnityEngine.Random", "Range")) continue;
+            int? minimum = IntegerConstant(recipeCode[i - 2]), upper = IntegerConstant(recipeCode[i - 1]);
+            Check(minimum.HasValue && upper.HasValue && minimum.Value >= 0 && upper.Value <= 8,
+                "Native Alchemy recipe quantity roll has a proven bounded integer range");
+            maximumQuantity = Math.Max(maximumQuantity, upper.Value - 1); recipeRolls++;
+        }
+        Check(recipeRolls == 24 && maximumQuantity == 7,
+            "All 24 native Alchemy recipes produce at most seven items per quick craft");
+        foreach (string method in new[] { "ActionLabel", "SecondaryLabel", "CanTransfer", "CanTransferInventory", "CanActivate" })
+            Check(!CallsRecipeGetter(craftingContext.GetMethod(method, All)),
+                "Controller Alchemy eligibility/hints do not reroll native recipes: " + method);
+        foreach (string method in new[] { "ActionLabel", "SecondaryLabel", "CanTransfer", "CanTransferInventory", "CanActivate", "CanPlaceOne" })
+            Check(!CallsRecipeGetter(craftingContext.GetMethod(method, All), "GetGearCrafted") &&
+                !CallsRecipeGetter(craftingContext.GetMethod(method, All), "GetRandomTier"),
+                "Shared crafting eligibility/hints do not generate or reroll gear: " + method);
+        MethodInfo nativeGearUnlock = inventoryGame.GetMethod("GetRecipeUnlocked0", All);
+        List<CodeInstruction> nativeUnlockCode = Read(nativeGearUnlock);
+        Check(nativeUnlockCode.Any(i => i.opcode == OpCodes.Ldfld && i.operand is FieldInfo field && field.Name == "recipeUnlocked0"),
+            "Native Gear unlock getter reads the actual stored recipe matrix");
+        Check(!CallsRecipeGetter(nativeGearUnlock) && !CallsRecipeGetter(nativeGearUnlock, "GetRandomTier") &&
+            !CallsRecipeGetter(nativeGearUnlock, "Craft"), "Native Gear unlock lookup is independent of output rolls and crafting");
+        string nativeSource = File.ReadAllText(Path.Combine(ModDirectory(), "..", "..", "GameReference", "Generated", "Assembly-CSharp", "GameScript.cs"));
+        string fixtureGetter = File.ReadAllText(Path.Combine(ModDirectory(), "tests", "gear_forge_context_repro", "NativeGearRecipe.cs"));
+        string referenceGetter = ExtractMethod(nativeSource, "public int GetRecipeUnlocked0(int p, int n)");
+        fixtureGetter = ExtractMethod(fixtureGetter, "public int GetRecipeUnlocked0(int p, int n)")
+            .Replace("UnlockCalls++; LastUnlockPage = p; LastUnlockCell = n;", "");
+        Check(System.Text.RegularExpressions.Regex.Replace(referenceGetter, @"\s+", "") ==
+            System.Text.RegularExpressions.Regex.Replace(fixtureGetter, @"\s+", ""),
+            "Gear context fixture uses the unchanged native unlock getter body apart from call recording");
+        Check(CallsRecipeGetter(inventoryGame.GetMethod("GetGearCrafted", All), "GetRandomTier"),
+            "Native gear generation retains ownership of random-tier selection");
+        Check(queued.Any(method => method.DeclaringType.Name.Contains("QuickCraft")),
+            "Pending-drop quarantine includes native quick-craft continuation");
         // Old Unity's logger is managed until its enabled sink reaches a native
         // ECall. Disable that sink so successful production IL audits can finish.
         Assembly unity=Assembly.LoadFrom(Path.Combine(managed,"UnityEngine.dll"));
@@ -186,9 +248,137 @@ internal static class Program
         Check(updatePatched.Count==updateNative.Count+1,"only Droid receiver argument changes native update length");
         Check(updateNative.Count(i=>Call(i,"GameScript","PrismItem"))==1 && updatePatched.Count(i=>Call(i,"GameScript","PrismItem"))==1,
             "Controller Update input adapter preserves native Prism conversion dispatch");
+        Check(updateNative.Count(i=>Call(i,"GameScript","Craft")) > 0 &&
+            updatePatched.Count(i=>Call(i,"GameScript","Craft")) == updateNative.Count(i=>Call(i,"GameScript","Craft")),
+            "Native crafting action calls remain intact after controller input adaptation");
         Check(updateNative.Count(i=>Call(i,"GameScript","UseSkill"))==6&&updatePatched.Count(i=>Call(i,"GameScript","UseSkill"))==6,"six native chip actions retained");
         Check(updateNative.Count(i=>Call(i,"GameScript","UseItem"))==6&&updatePatched.Count(i=>Call(i,"GameScript","UseItem"))==6,"six native item actions retained");
+        MethodBase[] chipSources = Targets("InventoryChipSourcePatch");
+        Check(chipSources.Length == 2 && chipSources.Select(t => t.Name).OrderBy(n => n)
+            .SequenceEqual(new[] { "SelectCombatChip", "SwapCombatChip" }),
+            "Chip provenance observes exactly native pickup and swap methods");
+        Type chipContext = mod.GetType("ControllerSupport.CombatChipMenuContext", true);
+        Check(inventoryGame.GetField("combatChips", All).FieldType == typeof(int[]) &&
+            inventoryGame.GetField("holdingCombatChip", All).FieldType == typeof(bool),
+            "Actual native chips use integer slots and a separate held-type flag");
+        foreach (string name in new[] { "SelectCombatChip", "PlaceCombatChip", "SwapCombatChip" })
+        {
+            Check(updateNative.Count(i => Call(i, "GameScript", name)) == 1 &&
+                updatePatched.Count(i => Call(i, "GameScript", name)) == 1,
+                "Controller input adaptation preserves native chip action dispatch: " + name);
+            List<CodeInstruction> nativeChipAction = Read(inventoryGame.GetMethod(name, All));
+            Check(nativeChipAction.Count(i => Call(i, "GameScript", "UpdateHP")) == 1 &&
+                nativeChipAction.Count(i => Call(i, "GameScript", "UpdateMana")) == 1,
+                "Native chip stat updates remain authoritative: " + name);
+        }
+        List<CodeInstruction> pickupChipCode = Read(inventoryGame.GetMethod("SelectCombatChip", All));
+        Check(!pickupChipCode.Any(i => i.opcode == OpCodes.Stfld && i.operand is FieldInfo f &&
+            f.DeclaringType.FullName == "Item" && f.Name == "q"),
+            "Native chip pickup does not assign an ordinary stack quantity");
+        foreach (string name in new[] { "SaveGame", "LoadGame" })
+            Check(Read(inventoryGame.GetMethod(name, All)).Any(i => i.opcode == OpCodes.Ldfld &&
+                i.operand is FieldInfo f && f.Name == "combatChips"),
+                "Native chip persistence remains present: " + name);
+        Type guide = mod.GetType("ControllerSupport.ControllerCombatGuide", true);
+        Check(Read(mod.GetType("ControllerSupport.StorageHeldItemCursorPatch", true).GetMethod("Postfix", All))
+            .Count(i => Call(i, "ControllerSupport.ControllerCombatGuide", "Observe")) == 1,
+            "Native ActionCursor postfix observes the combat guide once");
+        Check(Read(mod.GetType("ControllerSupport.ProbeRunner", true).GetMethod("LateUpdate", All))
+            .Count(i => Call(i, "ControllerSupport.ControllerCombatGuide", "UpdateVisual")) == 1,
+            "Combat guide refresh runs after native update/camera motion");
+        Check(CountCompiledCalls("ControllerSupport.ControllerSupportGadget", "Unload",
+            "ControllerSupport.ControllerCombatGuide", "Reset") == 1,
+            "Gadget unload restores native bars and removes owned guide resources");
+        Check(Read(guide.GetMethod("UpdateCone", All))
+            .Count(i => Call(i, "ControllerSupport.AimAssistGeometry", "VisibleConePolygon")) == 1,
+            "Staff cone rendering reuses the shared viewport-clipped aim-assist cone geometry");
         Console.WriteLine("Controller Support installed native IL and patch discovery: "+checks+" checks passed.");
+    }
+    // Inspect call tokens without runtime-loading GadgetCore's x86-only DLL.
+    // This preserves the real compiled-helper check on a 64-bit test host.
+    private static bool CallsRecipeGetter(MethodInfo method, string targetName = "GetRecipeItem")
+    {
+        using var stream = File.OpenRead(method.Module.Assembly.Location);
+        using var pe = new PEReader(stream);
+        return CountCalls(pe.GetMetadataReader(), method.GetMethodBody().GetILAsByteArray(), targetName) > 0;
+    }
+    private static int CountCompiledCalls(string typeName, string methodName, string targetType, string targetName)
+    {
+        using var stream = File.OpenRead(mod.Location);
+        using var pe = new PEReader(stream);
+        MetadataReader metadata = pe.GetMetadataReader();
+        TypeDefinition type = metadata.TypeDefinitions.Select(h => metadata.GetTypeDefinition(h))
+            .Single(t => metadata.GetString(t.Namespace) + "." + metadata.GetString(t.Name) == typeName);
+        MethodDefinition method = type.GetMethods().Select(h => metadata.GetMethodDefinition(h))
+            .Single(m => metadata.GetString(m.Name) == methodName);
+        return CountCalls(metadata, pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes(), targetName, targetType);
+    }
+    private static int CountCalls(MetadataReader metadata, byte[] bytes, string targetName, string targetType = null)
+    {
+        int matches = 0;
+        for (int position = 0; position < bytes.Length;)
+        {
+            byte first = bytes[position++];
+            short key = first == 0xFE ? (short)(0xFE00 | bytes[position++]) : first;
+            OpCode op = Opcodes[key];
+            if ((op == OpCodes.Call || op == OpCodes.Callvirt) && op.OperandType == OperandType.InlineMethod)
+            {
+                EntityHandle handle = MetadataTokens.EntityHandle(BitConverter.ToInt32(bytes, position));
+                string name = null, owner = null;
+                if (handle.Kind == HandleKind.MethodDefinition)
+                {
+                    MethodDefinition method = metadata.GetMethodDefinition((MethodDefinitionHandle)handle);
+                    name = metadata.GetString(method.Name);
+                    TypeDefinition type = metadata.GetTypeDefinition(method.GetDeclaringType());
+                    owner = metadata.GetString(type.Namespace) + "." + metadata.GetString(type.Name);
+                }
+                else if (handle.Kind == HandleKind.MemberReference)
+                {
+                    MemberReference member = metadata.GetMemberReference((MemberReferenceHandle)handle);
+                    name = metadata.GetString(member.Name);
+                    if (member.Parent.Kind == HandleKind.TypeReference)
+                    {
+                        TypeReference type = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
+                        owner = metadata.GetString(type.Namespace) + "." + metadata.GetString(type.Name);
+                    }
+                }
+                if (name == targetName && (targetType == null || owner == targetType)) matches++;
+            }
+            switch (op.OperandType)
+            {
+                case OperandType.InlineNone: break;
+                case OperandType.ShortInlineBrTarget: case OperandType.ShortInlineI:
+                case OperandType.ShortInlineVar: position++; break;
+                case OperandType.InlineVar: position += 2; break;
+                case OperandType.InlineI8: case OperandType.InlineR: position += 8; break;
+                case OperandType.InlineSwitch:
+                    int count = BitConverter.ToInt32(bytes, position); position += 4 + count * 4; break;
+                default: position += 4; break;
+            }
+        }
+        return matches;
+    }
+    private static string ExtractMethod(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        if (start < 0) throw new Exception("Missing native method declaration: " + signature);
+        int open = source.IndexOf('{', start), depth = 0;
+        for (int i = open; i < source.Length; i++)
+        {
+            if (source[i] == '{') depth++;
+            else if (source[i] == '}' && --depth == 0) return source.Substring(open, i - open + 1);
+        }
+        throw new Exception("Unterminated native method: " + signature);
+    }
+    private static int? IntegerConstant(CodeInstruction instruction)
+    {
+        if (instruction.opcode == OpCodes.Ldc_I4 || instruction.opcode == OpCodes.Ldc_I4_S)
+            return Convert.ToInt32(instruction.operand);
+        OpCode[] small = { OpCodes.Ldc_I4_0, OpCodes.Ldc_I4_1, OpCodes.Ldc_I4_2,
+            OpCodes.Ldc_I4_3, OpCodes.Ldc_I4_4, OpCodes.Ldc_I4_5, OpCodes.Ldc_I4_6,
+            OpCodes.Ldc_I4_7, OpCodes.Ldc_I4_8 };
+        for (int i = 0; i < small.Length; i++) if (instruction.opcode == small[i]) return i;
+        return null;
     }
     private static MethodBase[] Targets(string patch)
     { return ((IEnumerable<MethodBase>)mod.GetType("ControllerSupport."+patch,true).GetMethod("TargetMethods",All).Invoke(null,null)).ToArray(); }

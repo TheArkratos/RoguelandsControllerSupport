@@ -1,10 +1,10 @@
 using System;
 namespace GadgetCore.API
 {
-    [Flags] public enum ItemType { NONSTACKING=1, WEAPON=2, OFFHAND=4, HELMET=8, ARMOR=16, RING=32, DROID=64, EQUIP_MASK=126 }
+    [Flags] public enum ItemType { NONSTACKING=1, WEAPON=2, OFFHAND=4, HELMET=8, ARMOR=16, RING=32, DROID=64, EQUIP_MASK=126, LOOT=128, ORGANIC=256, EQUIPABLE=512, EMBLEM=LOOT|1024 }
     public static class ItemRegistry
     {
-        public static ItemType GetTypeByID(int id) { return id == 500 ? ItemType.WEAPON | ItemType.NONSTACKING : 0; }
+        public static ItemType GetTypeByID(int id) { return id == 500 ? ItemType.WEAPON | ItemType.NONSTACKING : id >= 11 && id <= 39 ? ItemType.LOOT | ItemType.ORGANIC : id >= 101 && id <= 199 ? ItemType.EMBLEM : 0; }
     }
     public static class GadgetCoreAPI
     {
@@ -23,6 +23,14 @@ namespace ControllerSupport
     // rendering have dedicated production-linked integration fixtures.
     internal static class InventoryItemLifecycle
     {
+        internal static bool IsHoldingChip(GameScript game)
+        {
+            var flag=typeof(GameScript).GetField("holdingCombatChip",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.NonPublic);
+            var held=Held(game); return game!=null && held!=null && held.id>0 && flag!=null && (bool)flag.GetValue(game);
+        }
+        internal static bool HasHeldItem(GameScript game)
+        { var held=Held(game);return held!=null && held.id>0 && (held.q>0 || IsHoldingChip(game)); }
+
         internal static Item Held(GameScript game) { return game == null ? null : game.holdingItem; }
         internal static int CurrentPage(GameScript game) { return game.currentStoragePage; }
         internal static void ObserveContext(GameScript game) { }
@@ -41,14 +49,14 @@ namespace ControllerSupport
         internal static string LastReason, Primary, Secondary;
         internal static bool Transfer, Held, Controller;
         internal static void SetContext(GameScript game, UnityEngine.Collider selected, bool controller,
-            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false) { Primary=primary; Secondary=secondary; Transfer=transfer; Held=held; Controller=controller; }
+            BindingConfig config, string primary, string secondary, bool transfer, bool held, UnityEngine.Bounds? heldBadgeBounds = null, string cancelLabel = null, System.Func<UnityEngine.Bounds?> badgeProvider = null, bool storagePaging = false, bool recipePaging = false) { Primary=primary; Secondary=secondary; Transfer=transfer; Held=held; Controller=controller; }
         internal static void ClearPresentation() { LastReason=null; }
         internal static void Reject(string reason) { LastReason=reason; }
         internal static void Reset() { LastReason=null; }
     }
 }
 
-namespace ControllerSupport { internal static class ControllerGameplayInput { internal static int Consumed; internal static void ConsumeInventoryInput() { Consumed++; } } }
+namespace ControllerSupport { internal static class ControllerGameplayInput { internal static void ConsumeActionForFrame(string action) { } internal static int Consumed; internal static void ConsumeInventoryInput() { Consumed++; } } }
 
 // These legacy fixtures observe selection/actions only. Actual native cursor
 // synchronization and conversion visuals are covered by native_inventory_cursor_repro.

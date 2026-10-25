@@ -239,6 +239,7 @@ namespace ControllerSupport
         internal static void Postfix(ActionCursor __instance)
         {
             ControllerMenuSelection.PlaceHeldItemCursor(__instance);
+            ControllerCombatGuide.Observe(__instance);
         }
     }
 }

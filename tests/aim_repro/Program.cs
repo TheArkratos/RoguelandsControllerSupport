@@ -4,8 +4,63 @@ using UnityEngine;
 
 internal static class Program
 {
+    private static int dialogueChecks;
+    private static void DialogueCheck(bool value, string reason)
+    { dialogueChecks++; if (!value) throw new Exception(reason); }
+    private static void DialogueAim()
+    {
+        bool owner = true;
+        ControllerInputOwnership.Configure(() => owner);
+        var pad = new JoystickInputState(); pad.Connect();
+        Input.mousePosition = new Vector3(2, 1, 0); Input.MouseButtonDown0 = false;
+        GameScript.combatMode = true;
+        GameScript.dead = GameScript.pausing = GameScript.inventoryOpen = GameScript.buildMode = GameScript.talking = false;
+        ControllerAim.Configure(() => pad);
+        pad.Apply(new RawJoystickEvent { Type = 2, Number = 3, Value = 32767 });
+        Time.frameCount = -100; Time.unscaledTime = 0;
+        var visible = new ActionCursor(); visible.gameObject.name = "actionCursor"; visible.Awake();
+        if (ControllerVisibleCursor.Prefix(visible)) visible.Update();
+        Vector3 initial = visible.transform.position;
+        pad.Apply(new RawJoystickEvent { Type = 2, Number = 3, Value = 0 });
+        // Timed text-only popups leave talking false; full EnterTalking sets it
+        // true. Neither changes the player's still-active combat mode here.
+        Time.frameCount++; Time.unscaledTime += .016f;
+        DialogueCheck(!ControllerVisibleCursor.Prefix(visible), "timed dialogue popup retains neutral-stick controller crosshair");
+        GameScript.talking = true; Time.frameCount++; Time.unscaledTime += .016f;
+        bool runNative = ControllerVisibleCursor.Prefix(visible);
+        if (runNative) visible.Update();
+        DialogueCheck(!runNative, "dialogue opening keeps combat crosshair owned without a fresh stick deflection");
+        DialogueCheck((visible.transform.position-initial).sqrMagnitude<.0001f && Menuu.usingController,
+            "dialogue opening retains the last aim point and native controller branch");
+        Time.frameCount++; Time.unscaledTime += .016f;
+        DialogueCheck(ControllerAim.TryWorldPoint(out var during) && (during-initial).sqrMagnitude<.0001f,
+            "controller aim remains stable through neutral-stick dialogue frames");
+        GameScript.talking = false; Time.frameCount++; Time.unscaledTime += .016f;
+        DialogueCheck(!ControllerVisibleCursor.Prefix(visible), "dialogue closing retains controller crosshair without moving the stick");
+        GameScript.talking = true;
+        owner = false; Input.mousePosition = new Vector3(-31, 7, 0);
+        runNative=ControllerVisibleCursor.Prefix(visible);if(runNative)visible.Update();
+        DialogueCheck(runNative && !Menuu.usingController && Math.Abs(visible.transform.position.x+31)<.001f,
+            "explicit mouse takeover during dialogue immediately uses native cursor");
+        owner=true; pad.Apply(new RawJoystickEvent { Type = 2, Number = 3, Value = 32767 });
+        Time.frameCount++; Time.unscaledTime += 1;
+        DialogueCheck(!ControllerVisibleCursor.Prefix(visible), "controller can reclaim visible combat crosshair during dialogue");
+        foreach (string gate in new[]{"pause","inventory","dead","build","combat"})
+        {
+            if(gate=="pause")GameScript.pausing=true;if(gate=="inventory")GameScript.inventoryOpen=true;
+            if(gate=="dead")GameScript.dead=true;if(gate=="build")GameScript.buildMode=true;if(gate=="combat")GameScript.combatMode=false;
+            Time.frameCount++;Time.unscaledTime+=.016f;
+            DialogueCheck(!ControllerAim.TryWorldPoint(out _), "dialogue does not override excluded combat aim state: "+gate);
+            GameScript.pausing=GameScript.inventoryOpen=GameScript.dead=GameScript.buildMode=false;GameScript.combatMode=true;
+            Time.frameCount++;Time.unscaledTime+=.016f;ControllerAim.TryWorldPoint(out _);
+        }
+        ControllerAim.Reset(); GameScript.talking=false; Input.mousePosition=Vector3.zero; Menuu.usingController=false;
+        Console.WriteLine("Dialogue combat cursor: "+dialogueChecks+" checks passed.");
+    }
+
     private static void Main()
     {
+        DialogueAim();
         JoystickInputState input = new JoystickInputState();
         input.Connect();
         ControllerAim.Configure(() => input);

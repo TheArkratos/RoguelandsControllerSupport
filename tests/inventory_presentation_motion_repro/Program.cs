@@ -42,5 +42,8 @@ class Program{
  
  Collider narrow=new Collider();narrow.transform.parent=Camera.main.transform;narrow.bounds=new Bounds{min=new Vector3(100,100,0),max=new Vector3(120,120,0)};renderer.Show(narrow);InventoryFeedback.SetContext(game,narrow,true,binding,"Place",null,false,true,renderer.HeldItemBounds,badgeProvider:()=>renderer.HeldItemBounds);Draw();var smallCount=GUI.Draws[GUI.Draws.Count-1];
  Check(smallCount.text=="9999"&&smallCount.rect.x>=70&&smallCount.rect.xMax<=90&&smallCount.font<24,"four-digit quantity fits narrow selected cell without changing item");
+ renderer.SetHeldItemIcon(7,100,100,true);Check(Resources.LastPath=="cc/cc7","chip art resolves native chip resource for same numeric item ID");
+ int loaded=Resources.Loads;renderer.SetHeldItemIcon(7,100,100,true);Check(Resources.Loads==loaded,"same chip icon reuses cached art");
+ renderer.SetHeldItemIcon(7,100,100,false);Check(Resources.LastPath=="i/i7"&&Resources.Loads==loaded+1,"switching same ID from chip to item invalidates art cache");
  Console.WriteLine("PASS "+checks+" actual renderer geometry, scaled parent, post-update camera movement, same-cell quantity checks");
  }}

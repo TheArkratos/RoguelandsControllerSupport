@@ -83,9 +83,11 @@ namespace ControllerSupport
                 hasMouseSample = true;
 
                 JoystickInputState state = stateProvider == null ? null : stateProvider();
+                // Dialogue text does not end an active combat aiming session.
+                // Keep the last stick direction even while the stick is neutral.
                 bool combatAvailable = GameScript.combatMode && !GameScript.dead &&
                     !GameScript.pausing && !GameScript.buildMode &&
-                    !GameScript.inventoryOpen && !GameScript.talking;
+                    !GameScript.inventoryOpen;
                 if (mouseActive)
                 {
                     ownsAim = false;
@@ -131,7 +133,7 @@ namespace ControllerSupport
             // aim device while gameplay is active.
             if (hasExplicitAimOwner && GameScript.combatMode && !GameScript.dead &&
                 !GameScript.pausing && !GameScript.buildMode &&
-                !GameScript.inventoryOpen && !GameScript.talking && MenuScript.player)
+                !GameScript.inventoryOpen && MenuScript.player)
             {
                 NetworkView ownerView = MenuScript.player.GetComponent<NetworkView>();
                 if (ownerView && ownerView.isMine)

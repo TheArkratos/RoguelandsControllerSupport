@@ -24,6 +24,17 @@ namespace UnityEngine
         public NetworkView view = new NetworkView();
         public GameObject(string name = "") { this.name = name; transform = new Transform(this); }
         public T GetComponent<T>() where T : class { return collider as T ?? renderer as T ?? view as T; }
+        public T[] GetComponentsInChildren<T>(bool includeInactive = false) where T : class
+        {
+            var found=new List<T>();
+            if(includeInactive || activeInHierarchy)
+            {
+                T own=GetComponent<T>(); if(own!=null) found.Add(own);
+                for(int i=0;i<transform.childCount;i++)
+                    found.AddRange(transform.GetChild(i).gameObject.GetComponentsInChildren<T>(includeInactive));
+            }
+            return found.ToArray();
+        }
     }
     public class Transform : Object
     {
@@ -99,7 +110,7 @@ namespace UnityEngine
 }
 
 public static class MenuScript { public static UnityEngine.GameObject player = new UnityEngine.GameObject("player"); }
-public class GameScript : UnityEngine.Object
+public partial class GameScript : UnityEngine.Object
 {
     public int PageCalls;
     public void SetStorageLevel(int level) { storageLevel = level; }
@@ -184,7 +195,34 @@ public class GameScript : UnityEngine.Object
     { SwapCalls++; LastNativeSlot=slot; Item previous=inventory[slot]; inventory[slot]=holdingItem; holdingItem=previous; }
     public void SwapItemStorage(int slot)
     { SwapStorageCalls++; LastNativeSlot=slot; int index=StorageIndex(slot); Item previous=storage[index]; storage[index]=holdingItem; holdingItem=previous; }
-    public UnityEngine.GameObject menuCraft;
+    public UnityEngine.GameObject menuCraft, menuRecipe;
+    public int craftType, curRecipePage, RecipeUpCalls, RecipeDownCalls;
+    public void RecipeUp() { RecipeUpCalls++; curRecipePage=(curRecipePage+1)%(craftType==0?6:2); }
+    public void RecipeDown() { RecipeDownCalls++; int pages=craftType==0?6:2; curRecipePage=(curRecipePage+pages-1)%pages; }
+    public bool canCraft, crafting;
+    public Item[] craft = {new Item(),new Item(),new Item(),new Item()};
+    public int[,] recipeUnlocked1 = new int[2,12];
+    public int[,] recipeUnlocked0 = new int[10,12];
+    public int GearRecipeLookupCalls;
+    // Source-backed native visual-page to unlock-row mapping; production
+    // context must call the native method rather than index a visual page.
+    public int GetRecipeUnlocked0(int page,int slot)
+    {
+        GearRecipeLookupCalls++;
+        int[] firstRows={0,2,4,6,7,8}; int row=firstRows[page];
+        if(page<4&&slot>5) { row=page==3?9:row+1; slot-=6; }
+        return recipeUnlocked0[row,slot];
+    }
+    public int TransferCraftOutputCalls, SwapCraftCalls;
+    public IEnumerator ShiftClickCraft(int slot)
+    {
+        TransferCraftOutputCalls++; LastNativeSlot=slot;
+        for(int i=0;i<36;i++) if(inventory[i]==null||inventory[i].id==0)
+        { inventory[i]=craft[slot]; craft[slot]=new Item(); break; }
+        yield return null;
+    }
+    public void SwapItemCraft(int slot)
+    { SwapCraftCalls++; LastNativeSlot=slot; Item previous=craft[slot]; craft[slot]=holdingItem; holdingItem=previous; }
     public int currentStoragePage, CloseCalls, PauseCalls;
     public void CloseAllMenus() { CloseCalls++; inventoryOpen = false; }
     public void PauseMenu() { PauseCalls++; pausing = true; }
@@ -206,6 +244,7 @@ namespace ControllerSupport
         internal static int CreateCount;
         internal UnityEngine.Collider ShowTarget;
         internal int HeldIconId;
+        internal bool HeldIconIsChip;
         internal int HeldIconSetCount;
         internal SelectionCornerStyle Style;
         internal void SetStyle(SelectionCornerStyle style) { Style=style; }
@@ -218,8 +257,8 @@ namespace ControllerSupport
         }
         internal void Show(UnityEngine.Collider target) { ShowTarget = target; }
         internal float HeldIconWidth, HeldIconHeight;
-        internal void SetHeldItemIcon(int id, float width, float height)
-        { HeldIconId = id; HeldIconWidth = width; HeldIconHeight = height; HeldIconSetCount++; }
+        internal void SetHeldItemIcon(int id, float width, float height, bool isChip = false)
+        { HeldIconId = id; HeldIconIsChip=isChip; HeldIconWidth = width; HeldIconHeight = height; HeldIconSetCount++; }
         internal void Hide() { ShowTarget = null; HeldIconId = 0; }
         internal void Dispose() { }
     }

@@ -36,3 +36,19 @@ controls retain their existing mouse-only protections. IP/port/name fields may
 be selected; their text is still entered through the native keyboard path.
 No network connection, server preference write, game process or save is used by
 these tests.
+
+Native highlighting on main, character-select and singleplayer/multiplayer menus
+uses the game's actual `ButtonMenu.OnMouseEnter`/`OnMouseExit` methods. This fixture
+compiles the generated native `ButtonMenu.cs`, rather than duplicating its material,
+sound or text-animation logic. Four focused assertions failed before the bridge
+was implemented. The added checks exercise native default/selection transitions,
+character `bs0` over a preexisting physical `bs5` highlight, singleplayer/multiplayer,
+no repeated idle sound, context cleanup, and corner fallback on missing native
+highlight or other screens. A physical Unity hover callback is modeled by calling
+the real patch prefix followed by the real native callback when permitted; this
+covers callback suppression while controller-owned and native restoration without
+a duplicate sound when the mouse callback arrives before the menu update.
+
+Unity rendering, callback scheduling, real prefab appearance and mouse motion still
+need physical acceptance. These checks prove native dispatch and observed native
+material/audio/animation calls against modeled components; they do not run Unity.

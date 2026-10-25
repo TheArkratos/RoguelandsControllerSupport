@@ -38,6 +38,7 @@ namespace ControllerSupport
         // The game's item material owns its texture. Only the Sprite wrapper is ours.
         private Sprite heldIconSprite;
         private int heldIconId;
+        private bool heldIconIsChip;
         private float heldIconWidth;
         private float heldIconHeight;
         private bool disposed;
@@ -200,15 +201,16 @@ namespace ControllerSupport
         // Reuse the native item material's texture and update only when the held
         // item changes. The game already supplies this art for inventory icons.
         internal void SetHeldItemIcon(int itemId, float normalWorldWidth,
-            float normalWorldHeight)
+            float normalWorldHeight, bool isChip = false)
         {
             if (disposed || root == null) return;
             if (normalWorldWidth > 0f && !float.IsNaN(normalWorldWidth) &&
                 !float.IsInfinity(normalWorldWidth)) heldIconWidth = normalWorldWidth;
             if (normalWorldHeight > 0f && !float.IsNaN(normalWorldHeight) &&
                 !float.IsInfinity(normalWorldHeight)) heldIconHeight = normalWorldHeight;
-            if (itemId == heldIconId) return;
+            if (itemId == heldIconId && isChip == heldIconIsChip) return;
             heldIconId = itemId;
+            heldIconIsChip = isChip;
             heldIconRenderer.enabled = false;
             heldIconRenderer.sprite = null;
             if (heldIconSprite != null)
@@ -222,7 +224,7 @@ namespace ControllerSupport
                 heldIconHeight = 0f;
                 return;
             }
-            Material material = Resources.Load("i/i" + itemId) as Material;
+            Material material = Resources.Load((isChip ? "cc/cc" : "i/i") + itemId) as Material;
             Texture2D texture = material != null ? material.mainTexture as Texture2D : null;
             if (texture == null || texture.width <= 0 || texture.height <= 0) return;
             heldIconSprite = Sprite.Create(texture,

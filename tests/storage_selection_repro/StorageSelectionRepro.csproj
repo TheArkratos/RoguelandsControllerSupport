@@ -7,6 +7,8 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../CombatChipNavigationStub.cs" />
+    <Compile Include="../CraftingMenuNavigationStub.cs" Link="CraftingMenuNavigationStub.cs" />
     <Compile Include="../../src/SelectionCornerStyle.cs" Link="SelectionCornerStyle.cs" />
     <Compile Include="../../src/InventorySelectionNavigator.cs" Link="InventorySelectionNavigator.cs" />
     <Compile Include="Program.cs" />

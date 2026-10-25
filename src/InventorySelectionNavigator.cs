@@ -18,7 +18,7 @@ namespace ControllerSupport
         private const int PageFirstSlot = StorageFirstSlot + StorageSlotCount;
         private const int PageSlotCount = 12;
         private const int UpgradeSlot = PageFirstSlot + PageSlotCount;
-        private const int SlotCount = ItemConversionContext.ToggleSlot + 1;
+        private const int SlotCount = CombatChipMenuContext.FirstSlot + CombatChipMenuContext.TargetCount;
         private const int GridFirstSlot = 6;
         private const int GridSlotCount = 30;
         private const int GridColumns = 6;
@@ -39,6 +39,10 @@ namespace ControllerSupport
         private GameObject storageRoot;
         private bool portalOpen;
         private GameObject conversionRoot;
+        private GameObject craftingRoot;
+        private GameObject chipRoot;
+        private int craftingMode = -1;
+        private bool craftingNavigationRequiresRelease;
         private GameScript owner;
         private Vector3 lastMousePosition;
         private bool sampledMouse;
@@ -56,20 +60,30 @@ namespace ControllerSupport
         { return page >= 0 && page < PageSlotCount && ValidSlot(PageFirstSlot + page); }
         internal bool SelectedIsStorageUpgrade { get { return SelectedSlot == UpgradeSlot; } }
         internal bool SelectedIsPortal { get { return SelectedSlot >= PortalMenuContext.FirstSlot && SelectedSlot < PortalMenuContext.FirstSlot + PortalMenuContext.TargetCount; } }
+        internal bool SelectedIsChip { get { return CombatChipMenuContext.IsTarget(SelectedSlot); } }
+        internal bool SelectedIsCrafting { get { return CraftingMenuContext.IsTarget(SelectedSlot); } }
+        internal bool SelectedIsCraftingControl { get { return SelectedIsCrafting && !CraftingMenuContext.IsItemSlot(SelectedSlot); } }
         internal bool SelectedIsConversionToggle { get { return SelectedSlot == ItemConversionContext.ToggleSlot; } }
         internal Collider SelectedCollider
         {
             get
             {
-                if (SelectedSlot >= 0 && !ValidSlot(SelectedSlot)) ClearSelection();
+                if (SelectedSlot >= 0 && !ValidSlot(SelectedSlot))
+                {
+                    // Native Update disables the old pane before our same-frame
+                    // presentation runs. Hide its collider immediately, but retain
+                    // book/back provenance until the next context refresh maps it.
+                    if (CraftingViewSelection(owner) < 0) ClearSelection();
+                    return null;
+                }
                 return SelectedSlot >= 0 ? slots[SelectedSlot] : null;
             }
         }
 
         internal void Update(GameScript game, JoystickInputState state)
         {
-            if (game == null || !GameScript.inventoryOpen || !game.inventoryMain ||
-                !game.inventoryMain.activeInHierarchy)
+            if (game == null || !GameScript.inventoryOpen ||
+                (!CombatChipMenuContext.IsOpen(game) && (!game.inventoryMain || !game.inventoryMain.activeInHierarchy)))
             {
                 Reset();
                 return;
@@ -77,12 +91,17 @@ namespace ControllerSupport
 
             GameObject activeStorage = game.menuStorage &&
                 game.menuStorage.activeInHierarchy ? game.menuStorage : null;
+            int nextCraftingMode = CraftingMenuContext.ModeIdentity(game);
+            bool craftingModeChanged = owner == game && craftingMode != nextCraftingMode;
+            int craftingViewSelection = CraftingViewSelection(game);
             bool nextPortalOpen = PortalMenuContext.IsOpen(game);
             bool openingPortal = nextPortalOpen && (!portalOpen || owner != game ||
                 inventoryRoot != game.inventoryMain);
             if (owner != game || inventoryRoot != game.inventoryMain ||
                 hotkeyRoot != game.inventoryBar || storageRoot != activeStorage || portalOpen != nextPortalOpen ||
-                conversionRoot != (ItemConversionContext.IsOpen(game) ? ItemConversionContext.Root(game) : null))
+                conversionRoot != (ItemConversionContext.IsOpen(game) ? ItemConversionContext.Root(game) : null) ||
+                craftingRoot != CraftingMenuContext.Root(game) || craftingMode != nextCraftingMode ||
+                chipRoot != CombatChipMenuContext.Root(game))
             {
                 owner = game;
                 inventoryRoot = game.inventoryMain;
@@ -90,6 +109,11 @@ namespace ControllerSupport
                 storageRoot = activeStorage;
                 portalOpen = nextPortalOpen;
                 conversionRoot = ItemConversionContext.IsOpen(game) ? ItemConversionContext.Root(game) : null;
+                bool chipChanged = chipRoot != CombatChipMenuContext.Root(game);
+                chipRoot = CombatChipMenuContext.Root(game);
+                craftingRoot = CraftingMenuContext.Root(game);
+                craftingMode = nextCraftingMode;
+                if (craftingModeChanged || chipChanged) craftingNavigationRequiresRelease = Direction(state) != 0;
                 RefreshSlots();
                 sampledMouse = false;
                 heldDirection = 0;
@@ -101,10 +125,11 @@ namespace ControllerSupport
                 // the top-left backpack cell when no slot is under the mouse.
                 int portalDefault = openingPortal ? FirstPortalSlot() : -1;
                 int hovered = portalDefault >= 0 ? -1 : SlotUnderMouse(Input.mousePosition);
-                SelectedSlot = portalDefault >= 0 ? portalDefault : hovered >= 0 ? hovered :
+                SelectedSlot = ValidSlot(craftingViewSelection) ? craftingViewSelection :
+                    portalDefault >= 0 ? portalDefault : hovered >= 0 ? hovered :
                     ValidSlot(GridFirstSlot) ? GridFirstSlot : FirstValidSlot();
             }
-            else if (storageRoot != null || portalOpen || conversionRoot)
+            else if (storageRoot != null || portalOpen || conversionRoot || craftingRoot || chipRoot)
             {
                 // SixBySixChest may add its final row after this navigator has
                 // initialized. Page unlocks can also change while storage is open.
@@ -136,6 +161,8 @@ namespace ControllerSupport
             }
 
             int direction = Direction(state);
+            if (direction == 0) craftingNavigationRequiresRelease = false;
+            if (craftingNavigationRequiresRelease) direction = 0;
             if (direction == 0)
             {
                 heldDirection = 0;
@@ -163,7 +190,9 @@ namespace ControllerSupport
             hotkeyRoot = null;
             storageRoot = null;
             portalOpen = false;
-            conversionRoot = null;
+            conversionRoot = craftingRoot = chipRoot = null;
+            craftingMode = -1;
+            craftingNavigationRequiresRelease = false;
             Array.Clear(slots, 0, slots.Length);
             sampledMouse = false;
             heldDirection = 0;
@@ -174,6 +203,7 @@ namespace ControllerSupport
         private void RefreshSlots()
         {
             Array.Clear(slots, 0, slots.Length);
+            if (chipRoot) { CombatChipMenuContext.CollectTargets(owner, slots); return; }
             if (!inventoryRoot) return;
             Transform root = inventoryRoot.transform;
             for (int i = 0; i < root.childCount; i++)
@@ -201,6 +231,7 @@ namespace ControllerSupport
                         slots[MainSlotCount + number] = child.GetComponent<Collider>();
                 }
             }
+            CraftingMenuContext.CollectTargets(owner, slots);
             PortalMenuContext.CollectTargets(owner, slots);
             slots[ItemConversionContext.ToggleSlot] = ItemConversionContext.CollectTarget(owner);
             if (!storageRoot) return;
@@ -274,6 +305,23 @@ namespace ControllerSupport
                 (slot >= PageFirstSlot || slots[slot].gameObject.layer == 16);
         }
 
+        private int CraftingViewSelection(GameScript game)
+        {
+            if (!ControllerInputOwnership.UsingController || game == null || owner != game ||
+                inventoryRoot != game.inventoryMain || craftingMode < 0 ||
+                craftingMode != CraftingMenuContext.ModeIdentity(game)) return -1;
+            GameObject nextRoot = CraftingMenuContext.Root(game);
+            if (!craftingRoot || !nextRoot || craftingRoot == nextRoot) return -1;
+            // A real same-station book/back transition is the only invalid
+            // selection allowed to survive until target collection refreshes.
+            bool enteringRecipes = CraftingMenuContext.IsRecipeView(game);
+            if (SelectedSlot == CraftingMenuContext.RecipeToggle && enteringRecipes)
+                return CraftingMenuContext.RecipeBack;
+            if (SelectedSlot == CraftingMenuContext.RecipeBack && !enteringRecipes)
+                return CraftingMenuContext.RecipeToggle;
+            return -1;
+        }
+
         private void ClearSelection() { SelectedSlot = -1; }
 
         private int SlotUnderMouse(Vector3 mouse)
@@ -283,7 +331,7 @@ namespace ControllerSupport
             Ray ray = camera.ScreenPointToRay(mouse);
             RaycastHit hit;
             // Page buttons can be on a different layer from inventory slots.
-            if ((storageRoot || portalOpen || conversionRoot) && Physics.Raycast(ray, out hit, 5f, ~0))
+            if ((storageRoot || portalOpen || conversionRoot || craftingRoot || chipRoot) && Physics.Raycast(ray, out hit, 5f, ~0))
             {
                 int page = FindHitSlot(hit.collider, PageFirstSlot, SlotCount);
                 if (page >= 0) return page;
@@ -320,6 +368,11 @@ namespace ControllerSupport
             }
 
             int next = -1;
+            if (CraftingNeighbor(direction, out next))
+            {
+                if (ValidSlot(next)) SelectedSlot = next;
+                return;
+            }
             if (storageRoot && SelectedSlot >= StorageFirstSlot && SelectedSlot <= UpgradeSlot)
             {
                 next = SelectedSlot == UpgradeSlot ? NearestInDirection(direction, false) :
@@ -373,6 +426,47 @@ namespace ControllerSupport
                 direction == -2 && SelectedSlot >= EquippedFirstSlot &&
                 SelectedSlot < EquippedFirstSlot + EquippedSlotCount);
             if (next >= 0) SelectedSlot = next;
+        }
+
+        private bool CraftingNeighbor(int direction, out int next)
+        {
+            next = -1;
+            if (!CraftingMenuContext.IsRecipeView(owner))
+            {
+                if (!CraftingMenuContext.IsOpen(owner)) return false;
+                if (SelectedSlot == CraftingMenuContext.RecipeToggle)
+                {
+                    if (direction == -2) { next = SelectedSlot; return true; }
+                    if (direction == 2) { next = CraftingMenuContext.FirstSlot + 3; return true; }
+                }
+                if (SelectedSlot == CraftingMenuContext.CraftButton && direction == 1)
+                { next = SelectedSlot; return true; }
+                if (SelectedSlot < CraftingMenuContext.FirstSlot ||
+                    SelectedSlot >= CraftingMenuContext.FirstSlot + 3) return false;
+                // Only the three ingredient inputs have these shortcuts. The
+                // visible upper control opens the recipe book; page arrows are
+                // in that book, not in the ingredient pane. Navigation selects
+                // a button and never invokes its native action.
+                if (direction == -2) next = CraftingMenuContext.RecipeToggle;
+                else if (direction == 2) next = CraftingMenuContext.CraftButton;
+                else return false;
+                return true;
+            }
+            // Native bRecipe2 is the top-right return-to-crafting control.
+            // bRecDown is the physical left page arrow; bRecUp is the right.
+            if (SelectedSlot == CraftingMenuContext.RecipeBack && direction == -2)
+            { next = SelectedSlot; return true; }
+            if (SelectedSlot == CraftingMenuContext.PageDown && direction == 1)
+            { next = CraftingMenuContext.PageUp; return true; }
+            if (SelectedSlot == CraftingMenuContext.PageUp && direction == -1)
+            { next = CraftingMenuContext.PageDown; return true; }
+            // Native recipe cells are column-major with six rows. The bottom
+            // of either column must not escape into inventory targets below it.
+            int recipe = SelectedSlot - CraftingMenuContext.FirstRecipe;
+            if (recipe >= 0 && recipe < 12 && recipe % 6 == 5 && direction == 2)
+            { next = SelectedSlot; return true; }
+            // Other recipe-cell and output routes retain spatial navigation.
+            return false;
         }
 
         private int StorageNeighbor(int direction)

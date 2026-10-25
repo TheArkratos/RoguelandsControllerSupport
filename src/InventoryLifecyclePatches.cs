@@ -63,18 +63,20 @@ namespace ControllerSupport
                     || name.StartsWith("ShiftClick", StringComparison.Ordinal)
                     || name == "ForgeEmblem"
                     || name == "TrashItem"
-                    || name == "PrismItem";
+                    || name == "PrismItem"
+                    || name == "SelectCombatChip" || name == "PlaceCombatChip" || name == "SwapCombatChip";
                 ParameterInfo[] parameters = method.GetParameters();
                 if (mutation && parameters.Length == 1 && parameters[0].ParameterType == typeof(int))
                     yield return method;
-                else if ((name == "DropItem" || name == "CloseAllMenus") && parameters.Length == 0)
+                else if ((name == "DropItem" || name == "CloseAllMenus" || name == "Craft" || name == "DropCraftItems") && parameters.Length == 0)
                     yield return method;
             }
             // Older Unity/Mono iterators do not carry IteratorStateMachineAttribute.
             // Guard their MoveNext too, including a coroutine queued before a drop.
             foreach (Type nested in typeof(GameScript).GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
             {
-                if (nested.Name.IndexOf("ShiftClick", StringComparison.Ordinal) < 0
+                if ((nested.Name.IndexOf("ShiftClick", StringComparison.Ordinal) < 0
+                    && nested.Name.IndexOf("QuickCraft", StringComparison.Ordinal) < 0)
                     || !typeof(IEnumerator).IsAssignableFrom(nested)) continue;
                 MethodInfo move = nested.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (move != null && move.ReturnType == typeof(bool)) yield return move;
@@ -106,7 +108,8 @@ namespace ControllerSupport
         private static IEnumerable<MethodBase> TargetMethods()
         {
             foreach (string name in new[] { "SelectItem", "SplitItem", "SwapItem",
-                "SelectItemStorage", "SplitItemStorage", "SwapItemStorage" })
+                "SelectItemStorage", "SplitItemStorage", "SwapItemStorage",
+                "SelectItemCraft", "SplitItemCraft", "SwapItemCraft" })
                 yield return AccessTools.Method(typeof(GameScript), name, new[] { typeof(int) });
         }
 
@@ -128,8 +131,11 @@ namespace ControllerSupport
             Item held = InventoryItemLifecycle.Held(__instance);
             if (held == null || held.id == 0 || held.q <= 0) return;
             if (!ReferenceEquals(held, __state.Before) || held.q != __state.Quantity)
-                InventoryItemLifecycle.RecordSource(__instance, __0, __state.Page,
+            {
+                if (__originalMethod.Name.EndsWith("Craft")) InventoryItemLifecycle.RecordCraftSource(__instance, __0);
+                else InventoryItemLifecycle.RecordSource(__instance, __0, __state.Page,
                     __originalMethod.Name.EndsWith("Storage"));
+            }
         }
 
         [HarmonyFinalizer]
@@ -198,6 +204,83 @@ namespace ControllerSupport
     [HarmonyPatch(typeof(GameScript), "Prism")]
     [HarmonyGadget("Controller Support")]
     public static class InventoryPrismContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance)
+        { InventoryItemLifecycle.ObserveContext(__instance); }
+    }
+}
+
+namespace ControllerSupport
+{
+    [HarmonyPatch(typeof(GameScript), "Alchemy")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryAlchemyContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance)
+        { InventoryItemLifecycle.ObserveContext(__instance); }
+    }
+}
+
+namespace ControllerSupport
+{
+    [HarmonyPatch(typeof(GameScript), "GearForge")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryGearForgeContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance)
+        { InventoryItemLifecycle.ObserveContext(__instance); }
+    }
+}
+
+namespace ControllerSupport
+{
+    // Chip swaps mutate holdingItem.id in place and use q=0, so ordinary item
+    // quantity/reference capture cannot establish their source.
+    [HarmonyPatch]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryChipSourcePatch
+    {
+        internal sealed class Capture
+        {
+            internal Item Held;
+            internal int Id;
+            internal bool WasChip;
+        }
+        private static IEnumerable<MethodBase> TargetMethods()
+        {
+            foreach (string name in new[] { "SelectCombatChip", "SwapCombatChip" })
+                yield return AccessTools.Method(typeof(GameScript), name, new[] { typeof(int) });
+        }
+        [HarmonyPrefix, HarmonyPriority(Priority.First + 100)]
+        private static void Prefix(GameScript __instance, out Capture __state)
+        {
+            InventoryItemLifecycle.ObserveContext(__instance);
+            Item held = InventoryItemLifecycle.Held(__instance);
+            __state = new Capture { Held = held, Id = held == null ? 0 : held.id,
+                WasChip = InventoryItemLifecycle.IsHoldingChip(__instance) };
+        }
+        [HarmonyPostfix, HarmonyPriority(Priority.Last - 100)]
+        private static void Postfix(GameScript __instance, int __0, Capture __state)
+        {
+            if (__state == null || !InventoryItemLifecycle.IsHoldingChip(__instance)) return;
+            Item held = InventoryItemLifecycle.Held(__instance);
+            if (!__state.WasChip || !ReferenceEquals(__state.Held, held) || __state.Id != held.id)
+                InventoryItemLifecycle.RecordChipSource(__instance, __0);
+        }
+        [HarmonyFinalizer]
+        private static Exception Finalizer(GameScript __instance, int __0, Capture __state, Exception __exception)
+        {
+            if (__exception != null && __state != null) Postfix(__instance, __0, __state);
+            return __exception;
+        }
+    }
+
+    [HarmonyPatch(typeof(GameScript), "CombatChipMenu")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryCombatChipContextPatch
     {
         [HarmonyPostfix]
         private static void Postfix(GameScript __instance)

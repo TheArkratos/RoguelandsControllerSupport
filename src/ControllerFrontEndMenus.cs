@@ -37,6 +37,8 @@ namespace ControllerSupport
         private static bool navigationRequiresRelease;
         private static float nextRepeatAt;
         private static bool activeNativeUpdate;
+        private static ButtonMenu nativeHovered;
+        private static bool dispatchingNativeHover;
         private static BoxCollider resizedCharacterSlot;
         private static Vector3 originalCharacterSlotSize;
 
@@ -53,6 +55,7 @@ namespace ControllerSupport
 
         internal static void Reset()
         {
+            ClearNativeHover(false);
             RestoreCharacterHitbox();
             if (corners != null) corners.Dispose();
             corners = null;
@@ -168,7 +171,7 @@ namespace ControllerSupport
             try
             {
                 bool changed = owner != nextOwner || menuRoot != root;
-                if (changed) RestoreCharacterHitbox();
+                if (changed) { ClearNativeHover(false); RestoreCharacterHitbox(); }
                 owner = nextOwner;
                 menuRoot = root;
                 activeNativeUpdate = true;
@@ -254,7 +257,7 @@ namespace ControllerSupport
                         controllerOwns = true;
                         syntheticClick = true;
                         activateArmed = false;
-                    cancelArmed = false;
+                        cancelArmed = false;
                     }
                 }
                 ShowCorners();
@@ -513,8 +516,76 @@ namespace ControllerSupport
                     CultureInfo.InvariantCulture, out number);
         }
 
+        private static bool NativeHighlightScreen()
+        {
+            Menuu title = owner as Menuu;
+            if (title != null) return menuRoot == title.menuMain || menuRoot == title.menuCharSelect;
+            MenuScript modes = owner as MenuScript;
+            return modes != null && menuRoot == modes.menu;
+        }
+
+        private static ButtonMenu NativeHighlight(Collider target)
+        {
+            if (!target) return null;
+            ButtonMenu button = target.gameObject.GetComponent<ButtonMenu>();
+            return button && !button.isPlanet && !button.storageButton && button.buttonSelect ? button : null;
+        }
+
+        private static void DispatchNativeHover(ButtonMenu button, bool enter)
+        {
+            if (!button) return;
+            bool previous = dispatchingNativeHover;
+            dispatchingNativeHover = true;
+            try { if (enter) button.OnMouseEnter(); else button.OnMouseExit(); }
+            finally { dispatchingNativeHover = previous; }
+        }
+
+        private static void ClearNativeHover(bool restorePhysicalMouse)
+        {
+            ButtonMenu previous = nativeHovered;
+            nativeHovered = null;
+            if (!previous) return;
+            DispatchNativeHover(previous, false);
+            // Unity may still consider the stationary physical pointer inside a
+            // button: replay its own enter once when virtual hover relinquishes.
+            if (restorePhysicalMouse && Camera.main)
+                DispatchNativeHover(NativeHighlight(UnderPhysicalMouse(Input.mousePosition)), true);
+        }
+
+        internal static bool NativeHoverAllowed(ButtonMenu button)
+        {
+            if (dispatchingNativeHover) return true;
+            if (!ControllerInputOwnership.UsingController)
+            {
+                // This Unity callback itself restores physical hover. Do not
+                // replay another enter before the original callback executes.
+                activeNativeUpdate = false;
+                Clear();
+                return true;
+            }
+            if (!NativeHighlightScreen() || !button) return true;
+            foreach (Collider choice in choices)
+                if (choice && choice.gameObject == button.gameObject && NativeHighlight(choice)) return false;
+            return true;
+        }
+
         private static void ShowCorners()
         {
+            ButtonMenu next = NativeHighlightScreen() && Contains(selected) ? NativeHighlight(selected) : null;
+            if (next != nativeHovered)
+            {
+                ClearNativeHover(false);
+                // A physical hover may predate controller ownership. Retire it
+                // before showing the selected button, including bs0 defaults.
+                if (next && Camera.main)
+                {
+                    ButtonMenu physical = NativeHighlight(UnderPhysicalMouse(Input.mousePosition));
+                    if (physical != next) DispatchNativeHover(physical, false);
+                }
+                nativeHovered = next;
+                DispatchNativeHover(next, true);
+            }
+            if (next) { if (corners != null) corners.Hide(); return; }
             if (!Contains(selected)) { if (corners != null) corners.Hide(); return; }
             if (corners != null && !corners.IsAlive)
             {
@@ -540,12 +611,14 @@ namespace ControllerSupport
         {
             if (ControllerInputOwnership.UsingController) return true;
             activeNativeUpdate = false;
+            ClearNativeHover(true);
             Clear();
             return false;
         }
 
         private static void Clear()
         {
+            ClearNativeHover(false);
             RestoreCharacterHitbox();
             owner = null;
             menuRoot = null;
@@ -559,6 +632,24 @@ namespace ControllerSupport
             navigationRequiresRelease = false;
             if (corners != null) corners.Hide();
         }
+    }
+
+    // Unity mouse callbacks do not use the virtual raycast adapter. Let the
+    // selected native button own hover while controller input owns these menus.
+    [HarmonyPatch]
+    [HarmonyGadget("Controller Support")]
+    public static class FrontEndNativeHoverPatch
+    {
+        [HarmonyTargetMethods]
+        internal static IEnumerable<MethodBase> TargetMethods()
+        {
+            yield return typeof(ButtonMenu).GetMethod("OnMouseEnter");
+            yield return typeof(ButtonMenu).GetMethod("OnMouseExit");
+        }
+
+        [HarmonyPrefix]
+        internal static bool Prefix(ButtonMenu __instance)
+        { return ControllerFrontEndMenus.NativeHoverAllowed(__instance); }
     }
 
     internal static class FrontEndMenuTranspiler

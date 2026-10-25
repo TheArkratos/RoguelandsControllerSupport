@@ -12,12 +12,17 @@ namespace ControllerSupport
             "Move", "AimTargetOrMenuSelection", "Jump", "PrimaryAction", "Dash",
             "CombatMode", "Interact", "Inventory", "Pause",
             "MenuActivate", "MenuSecondary", "MenuTransfer", "MenuDrop", "MenuCancel",
-            "AimAssist", "Hotkey1", "Hotkey2", "Hotkey3", "Hotkey4", "Hotkey5", "Hotkey6"
+            "MenuPreviousPage", "MenuNextPage", "AimAssist", "Hotkey1", "Hotkey2", "Hotkey3", "Hotkey4", "Hotkey5", "Hotkey6"
         };
 
         private static readonly string[] MenuActions = {
             "MenuActivate", "MenuSecondary", "MenuTransfer", "MenuDrop", "MenuCancel", "Inventory", "Pause"
         };
+
+        // Recipe paging has priority over ordinary menu actions while its pane
+        // is open, so sharing those bindings is intentional. Its two directions
+        // must still be distinct from one another.
+        private static readonly string[] RecipePagingActions = { "MenuPreviousPage", "MenuNextPage" };
 
         private static readonly string[] GameplayActions = {
             "Jump", "PrimaryAction", "Dash", "CombatMode", "Interact", "Inventory", "Pause",
@@ -48,6 +53,8 @@ namespace ControllerSupport
             "MenuTransfer = Joystick1Button3\n" +
             "MenuDrop = Joystick1Button5\n" +
             "MenuCancel = Joystick1Button1\n" +
+            "MenuPreviousPage = Joystick1Button4\n" +
+            "MenuNextPage = Joystick1Button5\n" +
             "AimAssist = Joystick1Button9\n" +
             "Hotkey1 = DPadUp\n" +
             "Hotkey2 = DPadRight\n" +
@@ -201,6 +208,8 @@ namespace ControllerSupport
             AddLegacyAction(values, "MenuTransfer", "Joystick1Button3", MenuActions);
             AddLegacyAction(values, "MenuDrop", "Joystick1Button5", MenuActions);
             AddLegacyAction(values, "MenuCancel", "Joystick1Button1", MenuActions);
+            AddLegacyAction(values, "MenuPreviousPage", "Joystick1Button4", RecipePagingActions);
+            AddLegacyAction(values, "MenuNextPage", "Joystick1Button5", RecipePagingActions);
             AddLegacyAction(values, "AimAssist", "Joystick1Button9", GameplayActions);
             AddLegacyAction(values, "Hotkey1", "DPadUp", GameplayActions);
             AddLegacyAction(values, "Hotkey2", "DPadRight", GameplayActions);
@@ -214,6 +223,7 @@ namespace ControllerSupport
             // Same-context conflicts are unsafe. Reuse across contexts remains legal.
             CheckContext(values, "gameplay", GameplayActions);
             CheckContext(values, "menu", MenuActions);
+            CheckContext(values, "recipe paging", RecipePagingActions);
             return new BindingConfig(values);
         }
 
