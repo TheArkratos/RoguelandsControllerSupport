@@ -170,13 +170,13 @@ internal static class Program
         }
         Equal("Joystick1Button2", defaults["MenuSecondary"]);
         Equal("Joystick1Button3", defaults["MenuTransfer"]);
-        Equal("Joystick1Button5", defaults["MenuDrop"]);
+        Equal("RightTrigger", defaults["MenuDrop"]);
         Equal("Joystick1Button1", defaults["MenuCancel"]);
         Equal("A", defaults.Label("MenuActivate"));
         Equal("B", defaults.Label("MenuCancel"));
         Equal("X", defaults.Label("MenuSecondary"));
         Equal("Y", defaults.Label("MenuTransfer"));
-        Equal("RB", defaults.Label("MenuDrop"));
+        Equal("RT", defaults.Label("MenuDrop"));
         Equal("LB", defaults.Label("Dash"));
         Equal("View", defaults.Label("Inventory"));
         Equal("Menu", defaults.Label("Pause"));
@@ -185,7 +185,7 @@ internal static class Program
         string legacy = BindingConfig.DefaultText
             .Replace("MenuSecondary = Joystick1Button2", "MenuSecondary = Unbound")
             .Replace("MenuTransfer = Joystick1Button3\n", "")
-            .Replace("MenuDrop = Joystick1Button5\n", "")
+            .Replace("MenuDrop = RightTrigger\n", "")
             .Replace("MenuCancel = Joystick1Button1\n", "");
         string path = Path.Combine(Path.GetTempPath(), "ControllerSupportBindings-legacy-" + Guid.NewGuid().ToString("N") + ".ini");
         try
@@ -195,7 +195,7 @@ internal static class Program
             BindingConfig loaded = BindingConfig.Load(path);
             Equal("Unbound", loaded["MenuSecondary"]);
             Equal("Joystick1Button3", loaded["MenuTransfer"]);
-            Equal("Joystick1Button5", loaded["MenuDrop"]);
+            Equal("RightTrigger", loaded["MenuDrop"]);
             Equal("Joystick1Button1", loaded["MenuCancel"]);
             Equal(Convert.ToBase64String(original), Convert.ToBase64String(File.ReadAllBytes(path)));
             Reject(legacy.Replace("MenuSecondary = Unbound\n", ""), "legacy missing original action");
@@ -225,12 +225,13 @@ internal static class Program
             Reject(BindingConfig.DefaultText.Replace(current, action + " = Joystick1Button6"), "inventory collision " + action);
             Reject(BindingConfig.DefaultText.Replace(current, action + " = UnknownInput"), "bad menu token " + action);
         }
-        // Cross-context reuse is intentional: X, Y, and RB each retain their gameplay action.
+        // Cross-context reuse is intentional: X, Y and RT retain their gameplay actions.
+        Equal(defaults["PrimaryAction"], defaults["MenuDrop"]);
         Equal(defaults["Interact"], defaults["MenuSecondary"]);
         Equal(defaults["CombatMode"], defaults["MenuTransfer"]);
         string remapped = BindingConfig.DefaultText
             .Replace("MenuCancel = Joystick1Button1", "MenuCancel = Joystick1Button9")
-            .Replace("MenuDrop = Joystick1Button5", "MenuDrop = Joystick1Button12");
+            .Replace("MenuDrop = RightTrigger", "MenuDrop = Joystick1Button12");
         BindingConfig rebound = BindingConfig.Parse(remapped.Split('\n'));
         Equal("L3", rebound.Label("MenuCancel"));
         Equal("Button 12", rebound.Label("MenuDrop"));
@@ -254,7 +255,8 @@ internal static class Program
         False(rebound.Held("MenuDrop", input));
         BindingConfig triggers = BindingConfig.Parse(BindingConfig.DefaultText
             .Replace("MenuSecondary = Joystick1Button2", "MenuSecondary = LeftTrigger")
-            .Replace("MenuActivate = Joystick1Button0", "MenuActivate = RightTrigger").Split('\n'));
+            .Replace("MenuActivate = Joystick1Button0", "MenuActivate = RightTrigger")
+            .Replace("MenuDrop = RightTrigger", "MenuDrop = Unbound").Split('\n'));
         Equal("LT", triggers.Label("MenuSecondary"));
         Equal("RT", triggers.Label("MenuActivate"));
         input.Apply(Event(2, 2, 32767));

@@ -117,7 +117,10 @@ internal static class Program
         game.SetType(1);
         Check(CraftingMenuContext.ModeIdentity(game) == 1 && !CraftingMenuContext.IsGear(game), "same-root Alchemy switch changes context identity");
         game.SetType(2);
-        Check(CraftingMenuContext.ModeIdentity(game) == -1, "Ultimate Forge remains outside this phase");
+        Check(CraftingMenuContext.ModeIdentity(game) == 2 && CraftingMenuContext.IsUltimate(game),
+            "same-root Ultimate Forge switch retains distinct supported context identity");
+        Check(!CraftingMenuContext.CanActivate(game, 140, 0, out reason),
+            "Gear quick recipes cannot carry over into Ultimate read-only recipe display");
         game.SetType(3);
         Check(!CraftingMenuContext.IsOpen(game), "Creation Machine remains outside this phase");
         Console.WriteLine(checks + " Gear Forge context checks passed.");

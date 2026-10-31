@@ -65,6 +65,11 @@ internal static class Program
         pad.Apply(new RawJoystickEvent {Type=1,Number=(byte)button,Value=0}); Frame();
         ControllerMenuSelection.EndNativeUpdate();
     }
+    private static void Trigger(bool held)
+    {
+        ControllerMenuSelection.EndNativeUpdate(); pad.BeginFrame();
+        pad.Apply(new RawJoystickEvent { Type=2, Number=5, Value=held ? short.MaxValue : short.MinValue }); Frame();
+    }
     private static bool Left { get { return ControllerMenuSelection.VirtualMouseButtonDown(0); } }
     private static bool Right { get { return ControllerMenuSelection.VirtualMouseButtonDown(1); } }
     private static void Native(int slot, bool reject=false)
@@ -153,12 +158,12 @@ internal static class Program
         Check(game.TransferCraftCalls==0&&game.inventory[6].q==9&&!Left,"Native craft eligibility prevents transfer");
         Setup(true); game.holdingItem=new Item{id=21,q=5}; Hover(page); Press(0);
         Check(Left&&game.holdingItem.q==5,"Page activation keeps held stack"); Release(0);
-        Setup(); game.holdingItem=new Item{id=21,q=4}; Press(5);
-        Check(InventoryItemLifecycle.DropCalls==1 && !Left,"RB invokes dedicated drop");
-        pad.BeginFrame(); Frame(); Check(InventoryItemLifecycle.DropCalls==1,"Held RB drops once");
-        Setup(config:BindingConfig.DefaultText.Replace("MenuDrop = Joystick1Button5","MenuDrop = Joystick1Button12"));
-        game.holdingItem=new Item{id=21,q=2}; Press(5); Check(InventoryItemLifecycle.DropCalls==0,"Old Drop binding inactive");
-        Release(5); Press(12); Check(InventoryItemLifecycle.DropCalls==1,"Rebound Drop invokes action");
+        Setup(); game.holdingItem=new Item{id=21,q=4}; Trigger(true);
+        Check(InventoryItemLifecycle.DropCalls==1 && !Left,"RT invokes dedicated drop");
+        pad.BeginFrame(); Frame(); Check(InventoryItemLifecycle.DropCalls==1,"Held RT drops once");
+        Setup(config:BindingConfig.DefaultText.Replace("MenuDrop = RightTrigger","MenuDrop = Joystick1Button12"));
+        game.holdingItem=new Item{id=21,q=2}; Trigger(true); Check(InventoryItemLifecycle.DropCalls==0,"Old Drop binding inactive");
+        Trigger(false); Press(12); Check(InventoryItemLifecycle.DropCalls==1,"Rebound Drop invokes action");
         Setup(); game.holdingItem=new Item{id=21,q=2}; Press(1);
         Check(InventoryItemLifecycle.ReturnCalls==1&&game.CloseCalls==0&&GameScript.inventoryOpen,"B returns and leaves open");
         Release(1); Press(1); Check(game.CloseCalls==1,"Second B closes");
@@ -376,7 +381,7 @@ internal static class Program
         pad.BeginFrame(); pad.Apply(new RawJoystickEvent {Type=1,Number=4,Value=1});
         pad.Apply(new RawJoystickEvent {Type=1,Number=5,Value=1}); Frame();
         Check(game.PageCalls==0 && InventoryItemLifecycle.DropCalls==0, "simultaneous bumpers cancel without drop");
-        Setup(true, BindingConfig.DefaultText.Replace("MenuDrop = Joystick1Button5","MenuDrop = Joystick1Button12"));
+        Setup(true, BindingConfig.DefaultText.Replace("MenuDrop = RightTrigger","MenuDrop = Joystick1Button12"));
         Pages(11); game.holdingItem=new Item{id=21,q=3}; Press(5);
         Check(game.currentStoragePage==1 && InventoryItemLifecycle.DropCalls==0, "RB pages despite remapped drop"); Release(5);
         Press(12); Check(InventoryItemLifecycle.DropCalls==1, "non-bumper remapped drop remains usable in storage");

@@ -4,10 +4,13 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 game_dir="${ROGUELANDS_DIR:-$HOME/.local/share/Steam/steamapps/common/Roguelands}"
 managed_dir="$game_dir/Roguelands_Data/Managed"
-csc_dll="/usr/share/dotnet/sdk/10.0.112/Roslyn/bincore/csc.dll"
+sdk_version="$(dotnet --version)"
+sdk_root="$(dotnet --list-sdks | awk -v version="$sdk_version" '$1 == version {sub(/^.*\[/, ""); sub(/\].*$/, ""); print; exit}')"
+test -n "$sdk_root" || { echo "Cannot locate active .NET SDK $sdk_version." >&2; exit 1; }
+csc_dll="$sdk_root/$sdk_version/Roslyn/bincore/csc.dll"
 output_dir="$project_dir/build"
 
-for reference in mscorlib.dll System.dll System.Core.dll UnityEngine.dll GadgetCore.dll; do
+for reference in mscorlib.dll System.dll System.Core.dll UnityEngine.dll Assembly-CSharp.dll GadgetCore.dll 0Harmony.dll; do
     test -f "$managed_dir/$reference" || { echo "Missing reference: $managed_dir/$reference" >&2; exit 1; }
 done
 test -f "$csc_dll" || { echo "Roslyn compiler not found: $csc_dll" >&2; exit 1; }
@@ -40,6 +43,9 @@ dotnet "$csc_dll" \
     "$project_dir/src/ControllerGameplayActions.cs" \
     "$project_dir/src/GameplayInputPatches.cs" \
     "$project_dir/src/ControllerAim.cs" \
+    "$project_dir/src/ControllerFacing.cs" \
+    "$project_dir/src/ControllerLookDirection.cs" \
+    "$project_dir/src/ControllerAtalantaPlacement.cs" \
     "$project_dir/src/ControllerCombatGuide.cs" \
     "$project_dir/src/AimAssistGeometry.cs" \
     "$project_dir/src/AimLeadPrediction.cs" \
@@ -57,6 +63,9 @@ dotnet "$csc_dll" \
     "$project_dir/src/ItemConversionContext.cs" \
     "$project_dir/src/CraftingMenuContext.cs" \
     "$project_dir/src/CombatChipMenuContext.cs" \
+    "$project_dir/src/ShipDroidMenuContext.cs" \
+    "$project_dir/src/GearModificationMenuContext.cs" \
+    "$project_dir/src/QuestMenuContext.cs" \
     "$project_dir/src/ControllerMenuSelection.cs" \
     "$project_dir/src/InventoryItemLifecycle.cs" \
     "$project_dir/src/InventoryLifecyclePatches.cs" \

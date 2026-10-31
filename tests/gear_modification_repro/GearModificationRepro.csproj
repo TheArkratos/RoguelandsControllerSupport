@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/CombatChipMenuContext.cs" />
+    <Compile Include="../../src/SelectionCornerStyle.cs" Link="SelectionCornerStyle.cs" />
+    <Compile Include="../../src/BindingConfig.cs" Link="BindingConfig.cs" />
+    <Compile Include="../../src/InventorySelectionNavigator.cs" Link="InventorySelectionNavigator.cs" />
+    <Compile Include="../../src/ControllerMenuSelection.cs" Link="ControllerMenuSelection.cs" />
+    <Compile Include="../inventory_actions_repro/Helpers.cs" />
+    <Compile Include="../../src/InventoryCursorPosition.cs" Link="InventoryCursorPosition.cs" />
+    <Compile Include="../../src/JoystickInputState.cs" Link="JoystickInputState.cs" />
+    <Compile Include="../../src/RawJoystickEvent.cs" Link="RawJoystickEvent.cs" />
+    <Compile Include="../../src/CraftingMenuContext.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="../inventory_actions_repro/Stubs.cs" />
+      <Compile Include="../PortalMenuContextStub.cs" Link="PortalMenuContextStub.cs" />
+      <Compile Include="../ItemConversionContextStub.cs" Link="ItemConversionContextStub.cs" />
+      <Compile Include="../ShipDroidMenuStub.cs" />
+    <Compile Include="GearFixture.cs" />
+    <Compile Include="../../src/GearModificationMenuContext.cs" />
+    </ItemGroup>
+  <ItemGroup><Compile Include="../QuestMenuStub.cs" /></ItemGroup>
+</Project>

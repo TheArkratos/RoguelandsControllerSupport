@@ -23,13 +23,15 @@ namespace ControllerSupport
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly MethodInfo Placement = typeof(GameScript).GetMethod("CanPlaceCraft",
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly MethodInfo ItemLevel = typeof(GameScript).GetMethod("GetItemLevel",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
         private static FieldInfo Field(string name)
         { return typeof(GameScript).GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic); }
 
         internal static bool IsOpen(GameScript game)
         {
-            return game != null && Type != null && ((int)Type.GetValue(game) == 0 || (int)Type.GetValue(game) == 1) &&
+            return game != null && Type != null && (int)Type.GetValue(game) >= 0 && (int)Type.GetValue(game) <= 2 &&
                 GameScript.inventoryOpen && !GameScript.pausing && !GameScript.dead && !GameScript.buildMode &&
                 game.inventoryMain && game.inventoryMain.activeInHierarchy &&
                 ((game.menuCraft && game.menuCraft.activeInHierarchy) ||
@@ -39,7 +41,8 @@ namespace ControllerSupport
         internal static int ModeIdentity(GameScript game)
         { return IsOpen(game) ? (int)Type.GetValue(game) : -1; }
         internal static bool IsGear(GameScript game) { return ModeIdentity(game) == 0; }
-        private static string Station(GameScript game) { return IsGear(game) ? "Gear Forge" : "Alchemy"; }
+        internal static bool IsUltimate(GameScript game) { return ModeIdentity(game) == 2; }
+        private static string Station(GameScript game) { return IsUltimate(game) ? "Ultimate Forge" : IsGear(game) ? "Gear Forge" : "Alchemy"; }
 
         internal static bool IsRecipeView(GameScript game)
         { return IsOpen(game) && game.menuRecipe && game.menuRecipe.activeInHierarchy; }
@@ -71,6 +74,9 @@ namespace ControllerSupport
             {
                 if (!candidate || !candidate.enabled || !candidate.gameObject.activeInHierarchy) continue;
                 int index = Index(candidate, recipes);
+                // Ultimate's middle ingredient is unused. Its recipe book is
+                // a read-only unlock display: native recipe buttons are hidden.
+                if (IsUltimate(game) && (index == FirstSlot + 1 || index >= FirstRecipe)) continue;
                 if (index >= FirstSlot) targets[index] = candidate;
             }
         }
@@ -110,6 +116,9 @@ namespace ControllerSupport
             else if (button < 0 || button > 2) reason = "Action unavailable";
             if (reason != null) return false;
 
+            if (IsUltimate(game) && (index == FirstSlot + 1 || index >= FirstRecipe))
+            { reason = "This Ultimate Forge target is display-only"; return false; }
+
             bool recipes = IsRecipeView(game);
             if (recipes != (index >= RecipeBack))
             { reason = "Select a target in the active crafting panel"; return false; }
@@ -120,7 +129,8 @@ namespace ControllerSupport
                 if (button != 0) reason = "Use primary for crafting controls";
                 else if (index == CraftButton && (Ready == null || !(bool)Ready.GetValue(game) ||
                     HasItem(ReadTarget(game, FirstSlot + 3))))
-                    reason = "Place three valid ingredients and take the previous output first";
+                    reason = IsUltimate(game) ? "Place valid Lv.10 gear and a Prism, then take the previous output first" :
+                        "Place three valid ingredients and take the previous output first";
                 else if (index >= FirstRecipe)
                 {
                     if (!RecipeAvailable(game, index)) reason = "This recipe is locked";
@@ -139,6 +149,7 @@ namespace ControllerSupport
             }
 
             Item target = ReadTarget(game, index), heldItem = InventoryItemLifecycle.Held(game);
+            if (IsUltimate(game)) return CanActivateUltimate(game, index, button, heldItem, target, out reason);
             if (button == 2)
             {
                 if (HasItem(heldItem)) reason = "Place the held item before transferring";
@@ -171,6 +182,48 @@ namespace ControllerSupport
             else if (!ValidatePlacement(game, heldItem))
                 reason = "These ingredients cannot be combined";
             return reason == null;
+        }
+
+        private static bool CanActivateUltimate(GameScript game, int index, int button,
+            Item held, Item target, out string reason)
+        {
+            reason = null;
+            int slot = NativeSlot(index);
+            if (button == 2)
+            {
+                if (HasItem(held)) reason = "Place the held item before transferring";
+                else if (!CanTransfer(game, index)) reason = "No item or backpack space available";
+            }
+            else if (!HasItem(held))
+            {
+                if (!HasItem(target)) reason = "This slot is empty";
+            }
+            else if (button == 1) reason = "Use primary to place Ultimate Forge ingredients";
+            else if (slot == 3) reason = "Take the output before placing ingredients";
+            else if (HasItem(target)) reason = "Take the previous ingredient first";
+            else if (!UltimateIngredient(game, slot, held))
+                reason = slot == 0 ? "Place eligible Lv.10 gear here" : "Place a Prism here";
+            return reason == null;
+        }
+
+        private static bool UltimateIngredient(GameScript game, int slot, Item item)
+        {
+            if (!HasItem(item)) return false;
+            if (slot == 2) return item.id >= 89 && item.id <= 91;
+            if (slot != 0 || ItemLevel == null || !NativeUltimateGear(item.id)) return false;
+            return (int)ItemLevel.Invoke(game, new object[] { item.exp }) >= 10;
+        }
+
+        // These are native Update's actual placement ranges, not the broader
+        // CraftCheck ranges. GadgetCore's extra registered inputs run in a
+        // physical-mouse postfix, so virtual clicks must not advertise them.
+        private static bool NativeUltimateGear(int id)
+        {
+            return id >= 1000 && id < 1006 || id >= 450 && id < 456 ||
+                id >= 500 && id < 506 || id >= 600 && id < 612 ||
+                id >= 550 && id < 562 || id >= 350 && id < 362 ||
+                id >= 400 && id < 412 || id >= 300 && id < 312 ||
+                id >= 700 && id < 712 || id >= 800 && id < 812;
         }
 
         internal static bool TryChangeRecipePage(GameScript game, int direction, out string reason)
@@ -222,6 +275,7 @@ namespace ControllerSupport
         private static bool Ingredient(GameScript game, Item item)
         {
             if (!HasItem(item)) return false;
+            if (IsUltimate(game)) return UltimateIngredient(game, 0, item) || UltimateIngredient(game, 2, item);
             ItemType type = ItemRegistry.GetTypeByID(item.id);
             if (IsGear(game)) return (type & (ItemType.EMBLEM | ItemType.EQUIPABLE)) == ItemType.EMBLEM;
             return (type & (ItemType.EMBLEM | ItemType.EQUIPABLE)) == ItemType.LOOT &&
@@ -262,7 +316,7 @@ namespace ControllerSupport
 
         internal static bool CanTransferInventory(GameScript game, Item item)
         {
-            if (!IsOpen(game) || IsRecipeView(game) || !Ingredient(game, item)) return false;
+            if (!IsOpen(game) || IsUltimate(game) || IsRecipeView(game) || !Ingredient(game, item)) return false;
             for (int i = FirstSlot; i < FirstSlot + 3; i++)
             {
                 Item target = ReadTarget(game, i);
@@ -277,11 +331,14 @@ namespace ControllerSupport
         internal static string ActionLabel(GameScript game, int index)
         {
             if (!IsOpen(game) || !IsTarget(index) || IsRecipeView(game) != (index >= RecipeBack)) return null;
+            if (IsUltimate(game) && (index == FirstSlot + 1 || index >= FirstRecipe)) return null;
             Item held = InventoryItemLifecycle.Held(game);
             if (IsItemSlot(index))
             {
                 if (HasItem(held))
                 {
+                    if (IsUltimate(game)) return !HasItem(ReadTarget(game, index)) &&
+                        UltimateIngredient(game, NativeSlot(index), held) ? "Place ingredient" : null;
                     if (NativeSlot(index) == 3 || !Ingredient(game, held)) return null;
                     Item target = ReadTarget(game, index);
                     if (HasItem(target) && GadgetCoreAPI.CanItemsStack(target, held) && target.q > 9999 - held.q)
@@ -303,6 +360,8 @@ namespace ControllerSupport
         {
             if (!IsOpen(game) || IsRecipeView(game) || !IsItemSlot(index)) return null;
             Item held = InventoryItemLifecycle.Held(game), target = ReadTarget(game, index);
+            if (IsUltimate(game)) return NativeSlot(index) == 1 || HasItem(held) || !HasItem(target) ? null :
+                NativeSlot(index) == 2 ? "Split stack" : NativeSlot(index) == 3 ? "Take output" : "Pick up ingredient";
             if (HasItem(held))
             {
                 if (CanPlaceOne(game, index, held, target)) return "Place one";

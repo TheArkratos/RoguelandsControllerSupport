@@ -217,6 +217,12 @@ internal static class Program
         owns=true;NoPoint(); // no stale target reappears before a new controller update
         ControllerExploration.UpdateAndDispatch(viewportGame);Point(17);
         ControllerInputOwnership.Configure(()=>true);
+        bool story=true;ControllerInputOwnership.Configure(()=>true,()=>story);
+        ControllerGameplayInput.Pressed=true;activations=viewportGame.activateCalls;
+        ControllerExploration.UpdateAndDispatch(viewportGame);NoPoint();
+        Check(viewportGame.activateCalls==activations,"story modal blocks exploration dispatch outside inventory/talking");
+        ControllerGameplayInput.Pressed=false;story=false;ControllerExploration.UpdateAndDispatch(viewportGame);Point(17);
+        ControllerInputOwnership.Configure(()=>true);
         Console.WriteLine("Passed " + count + " exploration selection checks.");
     }
 }

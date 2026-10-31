@@ -16,7 +16,7 @@ internal static class Program
 
     private static void Main()
     {
-        string managed = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), ".local/share/Steam/steamapps/common/Roguelands/Roguelands_Data/Managed");
+        string managed = LocalReferences.Get("RoguelandsManagedDir");
         AppDomain.CurrentDomain.AssemblyResolve += (_, e) =>
         {
             string path = Path.Combine(managed, new AssemblyName(e.Name).Name + ".dll");

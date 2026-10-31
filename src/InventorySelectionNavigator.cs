@@ -18,7 +18,7 @@ namespace ControllerSupport
         private const int PageFirstSlot = StorageFirstSlot + StorageSlotCount;
         private const int PageSlotCount = 12;
         private const int UpgradeSlot = PageFirstSlot + PageSlotCount;
-        private const int SlotCount = CombatChipMenuContext.FirstSlot + CombatChipMenuContext.TargetCount;
+        private const int SlotCount = QuestMenuContext.FirstSlot + QuestMenuContext.TargetCount;
         private const int GridFirstSlot = 6;
         private const int GridSlotCount = 30;
         private const int GridColumns = 6;
@@ -41,6 +41,7 @@ namespace ControllerSupport
         private GameObject conversionRoot;
         private GameObject craftingRoot;
         private GameObject chipRoot;
+        private GameObject shipDroidRoot, gearModificationRoot, questRoot;
         private int craftingMode = -1;
         private bool craftingNavigationRequiresRelease;
         private GameScript owner;
@@ -60,6 +61,12 @@ namespace ControllerSupport
         { return page >= 0 && page < PageSlotCount && ValidSlot(PageFirstSlot + page); }
         internal bool SelectedIsStorageUpgrade { get { return SelectedSlot == UpgradeSlot; } }
         internal bool SelectedIsPortal { get { return SelectedSlot >= PortalMenuContext.FirstSlot && SelectedSlot < PortalMenuContext.FirstSlot + PortalMenuContext.TargetCount; } }
+        internal bool SelectedIsShipDroid { get { return ShipDroidMenuContext.IsTarget(SelectedSlot); } }
+        internal bool SelectedIsShipDroidUpgrade { get { return SelectedIsShipDroid && !ShipDroidMenuContext.IsItemSlot(SelectedSlot); } }
+        internal bool SelectedIsGearModification { get { return GearModificationMenuContext.IsTarget(SelectedSlot); } }
+        internal bool SelectedIsGearModificationControl { get { return GearModificationMenuContext.IsButton(SelectedSlot); } }
+        internal bool SelectedIsQuest { get { return QuestMenuContext.IsTarget(SelectedSlot); } }
+        internal bool SelectedIsQuestControl { get { return SelectedSlot == QuestMenuContext.Shuffle; } }
         internal bool SelectedIsChip { get { return CombatChipMenuContext.IsTarget(SelectedSlot); } }
         internal bool SelectedIsCrafting { get { return CraftingMenuContext.IsTarget(SelectedSlot); } }
         internal bool SelectedIsCraftingControl { get { return SelectedIsCrafting && !CraftingMenuContext.IsItemSlot(SelectedSlot); } }
@@ -95,13 +102,19 @@ namespace ControllerSupport
             bool craftingModeChanged = owner == game && craftingMode != nextCraftingMode;
             int craftingViewSelection = CraftingViewSelection(game);
             bool nextPortalOpen = PortalMenuContext.IsOpen(game);
+            GameObject nextShipDroidRoot = ShipDroidMenuContext.Root(game);
+            GameObject nextGearModificationRoot = GearModificationMenuContext.Root(game);
+            GameObject nextQuestRoot = QuestMenuContext.Root(game);
+            bool openingQuest = nextQuestRoot && (questRoot != nextQuestRoot || owner != game);
+            bool openingGearModification = nextGearModificationRoot && (gearModificationRoot != nextGearModificationRoot || owner != game);
+            bool openingShipDroids = nextShipDroidRoot && (shipDroidRoot != nextShipDroidRoot || owner != game);
             bool openingPortal = nextPortalOpen && (!portalOpen || owner != game ||
                 inventoryRoot != game.inventoryMain);
             if (owner != game || inventoryRoot != game.inventoryMain ||
                 hotkeyRoot != game.inventoryBar || storageRoot != activeStorage || portalOpen != nextPortalOpen ||
                 conversionRoot != (ItemConversionContext.IsOpen(game) ? ItemConversionContext.Root(game) : null) ||
                 craftingRoot != CraftingMenuContext.Root(game) || craftingMode != nextCraftingMode ||
-                chipRoot != CombatChipMenuContext.Root(game))
+                chipRoot != CombatChipMenuContext.Root(game) || shipDroidRoot != nextShipDroidRoot || gearModificationRoot != nextGearModificationRoot || questRoot != nextQuestRoot)
             {
                 owner = game;
                 inventoryRoot = game.inventoryMain;
@@ -111,9 +124,11 @@ namespace ControllerSupport
                 conversionRoot = ItemConversionContext.IsOpen(game) ? ItemConversionContext.Root(game) : null;
                 bool chipChanged = chipRoot != CombatChipMenuContext.Root(game);
                 chipRoot = CombatChipMenuContext.Root(game);
+                shipDroidRoot = nextShipDroidRoot; gearModificationRoot = nextGearModificationRoot;
+                questRoot = nextQuestRoot;
                 craftingRoot = CraftingMenuContext.Root(game);
                 craftingMode = nextCraftingMode;
-                if (craftingModeChanged || chipChanged) craftingNavigationRequiresRelease = Direction(state) != 0;
+                if (craftingModeChanged || chipChanged || openingShipDroids || openingGearModification || openingQuest) craftingNavigationRequiresRelease = Direction(state) != 0;
                 RefreshSlots();
                 sampledMouse = false;
                 heldDirection = 0;
@@ -123,13 +138,13 @@ namespace ControllerSupport
                 // choice is still performed by a fresh activation. Other panes
                 // retain their initial physical-hover behavior, falling back to
                 // the top-left backpack cell when no slot is under the mouse.
-                int portalDefault = openingPortal ? FirstPortalSlot() : -1;
+                int portalDefault = openingQuest && ValidSlot(QuestMenuContext.FirstSlot) ? QuestMenuContext.FirstSlot : openingPortal ? FirstPortalSlot() : openingShipDroids ? FirstShipDroidSlot() : openingGearModification && ValidSlot(GearModificationMenuContext.ItemSlot) ? GearModificationMenuContext.ItemSlot : -1;
                 int hovered = portalDefault >= 0 ? -1 : SlotUnderMouse(Input.mousePosition);
                 SelectedSlot = ValidSlot(craftingViewSelection) ? craftingViewSelection :
                     portalDefault >= 0 ? portalDefault : hovered >= 0 ? hovered :
                     ValidSlot(GridFirstSlot) ? GridFirstSlot : FirstValidSlot();
             }
-            else if (storageRoot != null || portalOpen || conversionRoot || craftingRoot || chipRoot)
+            else if (storageRoot != null || portalOpen || conversionRoot || craftingRoot || chipRoot || shipDroidRoot || gearModificationRoot || questRoot)
             {
                 // SixBySixChest may add its final row after this navigator has
                 // initialized. Page unlocks can also change while storage is open.
@@ -190,7 +205,7 @@ namespace ControllerSupport
             hotkeyRoot = null;
             storageRoot = null;
             portalOpen = false;
-            conversionRoot = craftingRoot = chipRoot = null;
+            conversionRoot = craftingRoot = chipRoot = shipDroidRoot = gearModificationRoot = questRoot = null;
             craftingMode = -1;
             craftingNavigationRequiresRelease = false;
             Array.Clear(slots, 0, slots.Length);
@@ -232,6 +247,9 @@ namespace ControllerSupport
                 }
             }
             CraftingMenuContext.CollectTargets(owner, slots);
+            ShipDroidMenuContext.CollectTargets(owner, slots);
+            GearModificationMenuContext.CollectTargets(owner, slots);
+            QuestMenuContext.CollectTargets(owner, slots);
             PortalMenuContext.CollectTargets(owner, slots);
             slots[ItemConversionContext.ToggleSlot] = ItemConversionContext.CollectTarget(owner);
             if (!storageRoot) return;
@@ -278,6 +296,13 @@ namespace ControllerSupport
                 if (button && button.name == "page" + page)
                     slots[PageFirstSlot + page] = button.GetComponent<Collider>();
             }
+        }
+
+        private int FirstShipDroidSlot()
+        {
+            for (int i = ShipDroidMenuContext.FirstSlot; i < ShipDroidMenuContext.FirstSlot + ShipDroidMenuContext.TargetCount; i++)
+                if (ValidSlot(i)) return i;
+            return -1;
         }
 
         private int FirstPortalSlot()
@@ -331,7 +356,7 @@ namespace ControllerSupport
             Ray ray = camera.ScreenPointToRay(mouse);
             RaycastHit hit;
             // Page buttons can be on a different layer from inventory slots.
-            if ((storageRoot || portalOpen || conversionRoot || craftingRoot || chipRoot) && Physics.Raycast(ray, out hit, 5f, ~0))
+            if ((storageRoot || portalOpen || conversionRoot || craftingRoot || chipRoot || shipDroidRoot || gearModificationRoot || questRoot) && Physics.Raycast(ray, out hit, 5f, ~0))
             {
                 int page = FindHitSlot(hit.collider, PageFirstSlot, SlotCount);
                 if (page >= 0) return page;

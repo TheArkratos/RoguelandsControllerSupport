@@ -50,7 +50,7 @@ namespace ControllerSupport
 
         private static bool Eligible(GameScript game)
         {
-            if (!ControllerInputOwnership.UsingController || game == null || InShipField == null || InventoryField == null ||
+            if (!ControllerInputOwnership.UsingController || ControllerInputOwnership.GameplayBlocked || game == null || InShipField == null || InventoryField == null ||
                 (bool)InShipField.GetValue(game) || !GameScript.inInstance || GameScript.isTown ||
                 GameScript.combatMode || GameScript.buildMode || GameScript.dead ||
                 GameScript.pausing || GameScript.inventoryOpen || GameScript.talking ||

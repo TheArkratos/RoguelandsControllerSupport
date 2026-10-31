@@ -361,7 +361,7 @@ internal static class Program
         ControllerFrontEndMenus.Reset();Input.Left=false;Physics.Hit=null;
         root=new GameObject("delete");Add(root,"delYes",0,2);var no=Add(root,"delNo",0,1);var title=new Menuu{menuDeleteChar=root};
         ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
-        AssertSelected("Character deletion still exposes only safe No",no);
+        AssertSelected("Character deletion confirmation defaults safe No",no);
         ControllerFrontEndMenus.Reset();root=new GameObject("data");Add(root,"bResetShip",0,2);back=Add(root,"bBack",0,1);title=new Menuu{menuData=root};
         ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
         AssertSelected("Data destructive controls remain excluded",back);
@@ -545,8 +545,230 @@ internal static class Program
             "target without native highlight falls back to corners and exits old material");
         ControllerFrontEndMenus.Reset(); Physics.Hit=null;
     }
+    private static void PauseNativeHighlights()
+    {
+        bool active = true;
+        ControllerInputOwnership.Configure(() => active);
+        Physics.Hit = null; Input.Left = Input.Right = false;
+        var root = new GameObject("menuPause");
+        var resume = Add(root, "bResume", 0, 3);
+        var quit = Add(root, "bQuit", 0, 2);
+        var resumeButton = Highlight(resume); var quitButton = Highlight(quit);
+        var game = new GameScript { menuPause = root };
+        var pad = ConnectedState(); GameScript.pausing = true;
+        ControllerFrontEndMenus.Configure(() => pad, Config(), null);
+        ControllerFrontEndMenus.Begin(game);
+        Assert(resume.gameObject.GetComponent<Renderer>().material == resumeButton.buttonSelect,
+            "pause Resume uses native selected material");
+        Assert(SelectionCornerRenderer.Visible == null, "pause native highlight hides corners");
+        Assert(!FrontEndNativeHoverPatch.Prefix(resumeButton) && !FrontEndNativeHoverPatch.Prefix(quitButton),
+            "pause physical callbacks cannot compete with controller focus");
+        int sounds = resume.gameObject.GetComponent<AudioSource>().Plays;
+        ControllerFrontEndMenus.Begin(game);
+        Assert(resume.gameObject.GetComponent<AudioSource>().Plays == sounds,
+            "pause idle focus does not repeat hover sound");
+        Axis(pad, 7, 1); ControllerFrontEndMenus.Begin(game);
+        AssertSelected("pause navigation selects Quit", quit);
+        Assert(resume.gameObject.GetComponent<Renderer>().material == resumeButton.button &&
+            quit.gameObject.GetComponent<Renderer>().material == quitButton.buttonSelect,
+            "pause navigation exits Resume and enters Quit native materials");
+        Assert(quit.gameObject.GetComponent<AudioSource>().Plays == 1,
+            "pause navigation plays native hover sound once");
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0), "pause focus does not activate Quit");
+        Physics.Hit = quit; Button(pad, 0); ControllerFrontEndMenus.Begin(game);
+        Assert(ControllerFrontEndMenus.MouseButtonDown(0), "pause fresh A retains native click dispatch");
+        ControllerFrontEndMenus.End(); pad.BeginFrame(); ControllerFrontEndMenus.Begin(game);
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0), "pause held A cannot replay activation");
+
+        active = false; Physics.Hit = resume; ControllerFrontEndMenus.MousePosition();
+        Assert(quit.gameObject.GetComponent<Renderer>().material == quitButton.button &&
+            resume.gameObject.GetComponent<Renderer>().material == resumeButton.buttonSelect,
+            "pause ownership handoff restores stationary physical hover");
+        Assert(FrontEndNativeHoverPatch.Prefix(resumeButton), "pause native mouse callback resumes on handoff");
+        active = true; Physics.Hit = null; Axis(pad, 7, 0);
+        ControllerFrontEndMenus.Begin(game);
+        active = false; Physics.Hit = quit; sounds = quit.gameObject.GetComponent<AudioSource>().Plays;
+        if (FrontEndNativeHoverPatch.Prefix(quitButton)) quitButton.OnMouseEnter();
+        Assert(quit.gameObject.GetComponent<AudioSource>().Plays == sounds + 1,
+            "pause Unity callback handoff plays hover once");
+        Assert(resume.gameObject.GetComponent<Renderer>().material == resumeButton.button,
+            "pause Unity callback handoff clears controller highlight");
+
+        active = true; Physics.Hit = null;
+        ControllerFrontEndMenus.Begin(game);
+        GameScript.pausing = false; ControllerFrontEndMenus.Begin(game);
+        Assert(resume.gameObject.GetComponent<Renderer>().material == resumeButton.button,
+            "unpausing clears prior controller material");
+        Assert(FrontEndNativeHoverPatch.Prefix(quitButton), "unpaused buttons are not guarded");
+        ControllerFrontEndMenus.Reset();
+
+        // Pause options share the same native root and native click adapter.
+        root = new GameObject("menuPause");
+        var higher = Add(root, "bHigherM", 0, 3); var lower = Add(root, "bLowerM", 0, 2);
+        var fullscreen = Add(root, "bFullscreen", 0, 1);
+        var higherButton = Highlight(higher); var lowerButton = Highlight(lower);
+        var fullscreenButton = Highlight(fullscreen); fullscreenButton.minorButton = true;
+        game = new GameScript { menuPause = root }; pad = ConnectedState(); GameScript.pausing = true;
+        ControllerFrontEndMenus.Configure(() => pad, Config(), null); ControllerFrontEndMenus.Begin(game);
+        Assert(higher.gameObject.GetComponent<Renderer>().material == higherButton.buttonSelect,
+            "pause options uses native highlight");
+        Axis(pad, 7, 1); ControllerFrontEndMenus.Begin(game);
+        Assert(lower.gameObject.GetComponent<Renderer>().material == lowerButton.buttonSelect,
+            "pause options navigation highlights next control");
+        Axis(pad, 7, 0); ControllerFrontEndMenus.Begin(game); Axis(pad, 7, 1); ControllerFrontEndMenus.Begin(game);
+        Assert(fullscreen.gameObject.GetComponent<Renderer>().material == fullscreenButton.buttonSelect &&
+            SelectionCornerRenderer.Visible == null, "pause minor button uses native material without corners");
+        var fallback = Add(root, "bLowerS", 0, 0);
+        Axis(pad, 7, 0); ControllerFrontEndMenus.Begin(game); Axis(pad, 7, 1); ControllerFrontEndMenus.Begin(game);
+        Assert(SelectionCornerRenderer.Visible == fallback &&
+            fullscreen.gameObject.GetComponent<Renderer>().material == fullscreenButton.button,
+            "pause unsupported target retains corners and clears prior native highlight");
+        var outside = Highlight(Add(new GameObject("unrelated"), "bResume", 0, 0));
+        Assert(FrontEndNativeHoverPatch.Prefix(outside), "pause guard leaves unrelated native buttons alone");
+        selected.SetValue(null, higher); Axis(pad, 7, 0); ControllerFrontEndMenus.Begin(game);
+        root.SetActive(false); ControllerFrontEndMenus.Begin(game);
+        Assert(higher.gameObject.GetComponent<Renderer>().material == higherButton.button,
+            "hidden pause root clears controller highlight");
+        root.SetActive(true); ControllerFrontEndMenus.Begin(game); ControllerFrontEndMenus.Reset();
+        Assert(higher.gameObject.GetComponent<Renderer>().material == higherButton.button,
+            "pause reset clears native controller material");
+        GameScript.pausing = false; Physics.Hit = null; ControllerInputOwnership.Configure(() => true);
+    }
+
+    private static void CharacterDeletion()
+    {
+        bool owned = true;
+        ControllerInputOwnership.Configure(() => owned); Physics.Hit = null;
+        Input.Left = Input.Right = Input.NativeCancel = Input.EscapeDown = false;
+        var root = new GameObject("menuCharSelect");
+        var cards = new Collider[6]; var deletes = new Collider[6];
+        for (int i = 0; i < 6; i++)
+        {
+            float x = i % 2 == 0 ? -4 : 4, y = 6 - i / 2 * 2;
+            cards[i] = Add(root,"bs" + i,x,y);
+            deletes[i] = Add(root,"del" + i,x + (i % 2 == 0 ? -2 : 2),y);
+        }
+        Add(root,"bBack",0,-2);
+        var prompt = new GameObject("menuDelete");
+        var yes = Add(prompt,"delYes",-2,0); var no = Add(prompt,"delNo",2,0);
+        var yesButton = Highlight(yes); var noButton = Highlight(no);
+        prompt.SetActive(false); var title = new Menuu { menuCharSelect = root, menuDeleteChar = prompt };
+        var pad = ConnectedState(); ControllerFrontEndMenus.Configure(() => pad,Config(),null);
+        ControllerFrontEndMenus.Begin(title);
+        for (int i = 0; i < 6; i++)
+        {
+            int outward = i % 2 == 0 ? -1 : 1;
+            Check("character card outward reaches native Delete " + i,cards[i],outward,deletes[i]);
+            Check("native Delete inward returns own card " + i,deletes[i],-outward,cards[i]);
+            if (i < 4) Check("native Delete Down reaches same-column next row " + i,deletes[i],2,deletes[i+2]);
+        }
+        // Replay only the native branch dispatch in memory; no saves or real
+        // Menuu.EraseCharacter invocation is involved in this fixture.
+        int pending = -1, erased = -1, confirms = 0;
+        Action replay = () =>
+        {
+            if (!ControllerFrontEndMenus.MouseButtonDown(0)) return;
+            string name = ControllerFrontEndMenus.SelectedCollider.gameObject.name;
+            if (name == "delYes") { erased = pending; confirms++; prompt.SetActive(false); }
+            else if (name == "delNo") { pending = 0; prompt.SetActive(false); }
+            else if (name.StartsWith("del")) { pending = int.Parse(name.Substring(3)); prompt.SetActive(true); }
+        };
+        selected.SetValue(null,deletes[3]); Physics.Hit = deletes[3];
+        Button(pad,0); ControllerFrontEndMenus.Begin(title); replay();
+        Assert(pending == 3 && prompt.activeInHierarchy && confirms == 0,
+            "A on native Delete opens confirmation for its exact character, without erasing");
+        Physics.Hit = yes; pad.BeginFrame(); ControllerFrontEndMenus.Begin(title);
+        AssertSelected("delete confirmation defaults No despite stationary pointer over Yes",no);
+        Assert(no.gameObject.GetComponent<Renderer>().material == noButton.buttonSelect,
+            "confirmation default No uses native highlight");
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0),"held A opening prompt cannot confirm");
+        Check("confirmation can deliberately navigate Left to native Yes",no,-1,yes);
+        ControllerFrontEndMenus.Begin(title);
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0),"moving focus to Yes while A held cannot confirm");
+        pad.BeginFrame();pad.Apply(new RawJoystickEvent{Type=1,Number=0,Value=0});ControllerFrontEndMenus.Begin(title);
+        Button(pad,0);ControllerFrontEndMenus.Begin(title);replay();
+        Assert(erased == 3 && confirms == 1,"fresh A on selected Yes routes exactly the pending character once");
+        ControllerFrontEndMenus.End();pad.BeginFrame();ControllerFrontEndMenus.Begin(title);
+        AssertSelected("after native completion character selection returns to first card",cards[0]);
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0),"held confirmation A cannot launch character after returning");
+        deletes[3].gameObject.SetActive(false);ControllerFrontEndMenus.Begin(title);
+        Check("empty character hides its delete control",cards[3],1,cards[3]);
+        // Native B cancellation should dispatch delNo, not the generic native
+        // Cancel branch (which goes to Main Menu).
+        pad.BeginFrame();pad.Apply(new RawJoystickEvent{Type=1,Number=0,Value=0});
+        Button(pad,1);prompt.SetActive(true);Physics.Hit = no;ControllerFrontEndMenus.Begin(title);
+        Assert(!ControllerFrontEndMenus.ButtonDown("Cancel") && !ControllerFrontEndMenus.MouseButtonDown(0),
+            "held entry B cannot cancel or activate confirmation");
+        pad.BeginFrame();pad.Apply(new RawJoystickEvent{Type=1,Number=1,Value=0});ControllerFrontEndMenus.Begin(title);
+        selected.SetValue(null,yes);Button(pad,1);ControllerFrontEndMenus.Begin(title);
+        Assert(!ControllerFrontEndMenus.ButtonDown("Cancel"),"controller B does not run native Back to Main Menu");
+        AssertSelected("controller B selects native No even while Yes focused",no);replay();
+        Assert(!prompt.activeInHierarchy && confirms == 1,"B dismisses prompt without another deletion");
+        ControllerFrontEndMenus.End();pad.BeginFrame();pad.Apply(new RawJoystickEvent{Type=1,Number=1,Value=0});
+        prompt.SetActive(true);Physics.Hit=no;ControllerFrontEndMenus.Begin(title);
+        selected.SetValue(null,yes);pad.BeginFrame();
+        pad.Apply(new RawJoystickEvent{Type=1,Number=0,Value=1});pad.Apply(new RawJoystickEvent{Type=1,Number=1,Value=1});
+        Physics.Hit=no;ControllerFrontEndMenus.Begin(title);
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0),"simultaneous A+B cannot confirm Yes before cancellation");
+        Assert(!ControllerFrontEndMenus.ButtonDown("Cancel"),"simultaneous A+B stays in native dialog click workflow");
+        AssertSelected("simultaneous A+B cancellation wins",no);replay();
+        Assert(confirms == 1,"simultaneous A+B never erases");
+        ControllerFrontEndMenus.Reset();
+        // Held navigation on modal entry must be released before selecting Yes.
+        pad=ConnectedState();Axis(pad,7,-1);prompt.SetActive(true);Physics.Hit=yes;
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        AssertSelected("held direction on confirmation entry retains default No",no);
+        ControllerFrontEndMenus.Begin(title);AssertSelected("held entry direction cannot later slide to Yes",no);
+        // Mouse/controller handoff preserves actual physical native input.
+        owned=false;Input.Left=true;Physics.Hit=yes;
+        Assert(ControllerFrontEndMenus.MouseButtonDown(0),"physical Yes click remains native on mouse handoff");
+        Assert(ControllerFrontEndMenus.SelectedCollider == null,"mouse handoff clears controller confirmation focus");
+        Input.Left=false;owned=true;ControllerFrontEndMenus.Begin(title);
+        AssertSelected("controller reacquisition defaults No over stationary Yes pointer",no);
+        ControllerFrontEndMenus.Reset();
+        // A provider may detect mouse ownership while polling: never expose a
+        // stale controller Yes activation afterward.
+        pad=ConnectedState();ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        selected.SetValue(null,yes);Button(pad,0);
+        ControllerFrontEndMenus.Configure(()=>{owned=false;return pad;},Config(),null);
+        ControllerFrontEndMenus.Begin(title);
+        Assert(!ControllerFrontEndMenus.MouseButtonDown(0) && ControllerFrontEndMenus.SelectedCollider==null,
+            "poll-time ownership loss cannot expose a delete confirmation click");
+        owned=true;Physics.Hit=null;ControllerFrontEndMenus.Reset();
+        // Fail closed if a malformed/custom dialog has lost its safe No control.
+        no.gameObject.SetActive(false);pad=ConnectedState();
+        ControllerFrontEndMenus.Configure(()=>pad,Config(),null);ControllerFrontEndMenus.Begin(title);
+        Assert(ControllerFrontEndMenus.SelectedCollider==null,"missing No control never defaults to Yes");
+        Axis(pad,7,0);ControllerFrontEndMenus.Begin(title);Axis(pad,7,-1);ControllerFrontEndMenus.Begin(title);
+        Assert(ControllerFrontEndMenus.SelectedCollider==null,"missing No cannot be bypassed by initial directional focus");
+        ControllerFrontEndMenus.Reset();Physics.Hit=null;
+    }
+
+    private static void QuestQuarantineMouseRouting()
+    {
+        foreach (bool owned in new[] { true, false })
+        {
+            ControllerFrontEndMenus.Reset();
+            ControllerInputOwnership.Configure(() => owned);
+            Input.Left = Input.Right = true;
+            ControllerMenuSelection.QuestInputBlocker = button => button == 0;
+            Assert(!ControllerFrontEndMenus.MouseButtonDown(0),
+                "quest quarantine blocks physical primary before ownership bypass: " + owned);
+            Assert(ControllerFrontEndMenus.MouseButtonDown(1),
+                "quest quarantine preserves unrelated physical secondary: " + owned);
+            ControllerMenuSelection.QuestInputBlocker = null;
+            Assert(ControllerFrontEndMenus.MouseButtonDown(0),
+                "ordinary physical primary remains native without quest quarantine: " + owned);
+        }
+        Input.Left = Input.Right = false;
+        ControllerInputOwnership.Configure(() => true);
+    }
+
     private static int Main()
     {
+        QuestQuarantineMouseRouting();
+        CharacterDeletion();
+        PauseNativeHighlights();
         NativeHighlights();
         OwnershipHandoff();
         CharacterHitboxes();

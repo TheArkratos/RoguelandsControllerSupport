@@ -98,7 +98,9 @@ namespace ControllerSupport
             Target target = FindTarget(original);
             MethodInfo getter = typeof(Input).GetProperty("mousePosition",
                 BindingFlags.Public | BindingFlags.Static).GetGetMethod();
-            MethodInfo replacement = typeof(ControllerAim).GetMethod("AttackMousePosition",
+            MethodInfo replacement = original != null && original.DeclaringType == typeof(PlayerScript) && original.Name == "ValflameProj"
+                ? typeof(AimAssistValflamePatch).GetMethod("MousePosition", BindingFlags.Static | BindingFlags.NonPublic)
+                : typeof(ControllerAim).GetMethod("AttackMousePosition",
                 BindingFlags.Static | BindingFlags.NonPublic);
             if (target == null || getter == null || replacement == null)
             {

@@ -36,9 +36,10 @@ namespace ControllerSupport
         internal static bool MutationsBlocked(GameScript game) { return BlockMutations; }
         internal static void ClearIfEmpty(GameScript game) { }
         internal static bool TryReturn(GameScript game, out string reason) { reason="No pickup source"; return false; }
-        internal static bool TryDropAbovePlayer(GameScript game, out string reason) { reason="No player"; return false; }
+        internal static int DropCalls;
+        internal static bool TryDropAbovePlayer(GameScript game, out string reason) { DropCalls++; reason="No player"; return false; }
         internal static void PlaySound(GameScript game, string path) { }
-        internal static void Reset() { BlockMutations=false; }
+        internal static void Reset() { BlockMutations=false; DropCalls=0; }
     }
     internal static class InventoryFeedback
     {

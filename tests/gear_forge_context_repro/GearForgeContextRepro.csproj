@@ -3,8 +3,12 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems><NuGetAudit>false</NuGetAudit>
     <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
     <CraftContextSource Condition="'$(CraftContextSource)' == ''">../../src/CraftingMenuContext.cs</CraftContextSource>
+    <RequiresRoguelandsReference>true</RequiresRoguelandsReference>
   </PropertyGroup>
+  <Target Name="GenerateNativeGearRecipe" BeforeTargets="CoreCompile">
+    <Exec Command="python3 &quot;$(MSBuildProjectDirectory)/generate_native_fixture.py&quot; --reference-dir &quot;$(RoguelandsReferenceDir)&quot; --output &quot;$(MSBuildProjectDirectory)/obj/NativeGearRecipe.g.cs&quot;" />
+  </Target>
   <ItemGroup><Compile Include="$(CraftContextSource)" /><Compile Include="../alchemy_context_repro/Stubs.cs" />
-    <Compile Include="NativeGearRecipe.cs" /><Compile Include="Program.cs" />
+    <Compile Include="obj/NativeGearRecipe.g.cs" /><Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

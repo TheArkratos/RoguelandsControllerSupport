@@ -236,6 +236,12 @@ internal static class Program
         Tick(()=>Button(2,false));Tick(()=>Button(2,true));
         Check(game.menuTalking.Clicks==1,"fresh dialogue action rearms after release");
         ControllerInputOwnership.Configure(()=>true);
+        bool story=false;ControllerInputOwnership.Configure(()=>true,()=>story);Setup();Tick();
+        story=true;Tick(()=>Button(2,true));
+        Check(game.menuTalking.Clicks==0&&game.Talks==0,"story transition overlap cannot also reveal or advance ordinary dialogue");
+        story=false;Tick();Check(game.menuTalking.Clicks==0,"closing story cannot replay held Interact");
+        Tick(()=>Button(2,false));Tick(()=>Button(2,true));Check(game.menuTalking.Clicks==1,"ordinary dialogue can resume after modal release");
+        ControllerInputOwnership.Configure(()=>true);
         Console.WriteLine("PASS: " + checks + " dialogue input checks");
     }
 }

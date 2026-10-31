@@ -127,8 +127,10 @@ public class MenuScript : UnityEngine.Object
 }
 public class GameScript : UnityEngine.Object
 {
-    public static bool pausing;
-    public UnityEngine.GameObject menuPause;
+    public static bool pausing, dead;
+    public UnityEngine.GameObject menuPause, menuStory, menuEmblemForge, menuTrasher, menuPrism;
+    public int LeaveCalls;
+    public void LeaveNPC() { LeaveCalls++; menuStory.SetActive(false); }
 }
 
 namespace GadgetCore.API
@@ -159,6 +161,9 @@ namespace ControllerSupport
 {
     internal static class ControllerMenuSelection
     {
+        internal static Func<int, bool> QuestInputBlocker;
+        internal static bool QuestMouseInputBlocked(int button)
+        { return QuestInputBlocker != null && QuestInputBlocker(button); }
         internal static UnityEngine.Vector3 VirtualMousePosition()
         { return UnityEngine.Input.mousePosition; }
         internal static bool VirtualMouseButtonDown(int button)

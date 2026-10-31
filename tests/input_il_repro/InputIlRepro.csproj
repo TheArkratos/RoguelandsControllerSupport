@@ -9,7 +9,7 @@
   <ItemGroup>
     <Compile Include="../ControllerCombatGuideStub.cs" />
     <Reference Include="0Harmony">
-      <HintPath>$(HOME)/.local/share/Steam/steamapps/common/Roguelands/Roguelands_Data/Managed/0Harmony.dll</HintPath>
+      <HintPath>$(RoguelandsManagedDir)/0Harmony.dll</HintPath>
     </Reference>
     <Compile Include="../../src/GameplayInputPatches.cs" Link="GameplayInputPatches.cs" />
     <Compile Include="Program.cs" />

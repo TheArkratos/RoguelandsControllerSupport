@@ -85,6 +85,35 @@ class Program {
   ControllerInputOwnership.Reset();Tick(()=>Axis(0,short.MaxValue));
   Check(!ControllerGameplayInput.PlayerButton("Right"),"unconfigured policy defaults to native input");
   ControllerInputOwnership.Configure(()=>true);
+  bool story=false, storyOwner=true;ControllerInputOwnership.Configure(()=>storyOwner,()=>story);
+  Setup(true);Tick(()=>Button(0,true));story=true;
+  Check(!Hotkey(5),"live story modal blocks a hotkey queued earlier in the same frame");
+  foreach(string name in new[]{"Left","Right","Up","Down","Jump","Dash Left","Dash Right"}){
+   Input.Down.Add(name);Input.Held.Add(name);Input.Up.Add(name);
+   Check(!ControllerGameplayInput.PlayerButton(name)&&!ControllerGameplayInput.PlayerButtonDown(name),"story blocks controller movement/action press adapters "+name);
+   Check(ControllerGameplayInput.PlayerButtonUp(name),"story preserves native release cleanup "+name);
+  }
+  Input.Up.Clear();Axis(0,short.MaxValue);Time.frameCount++;
+  ControllerGameplayInput.PlayerButtonUp("Right"); // Sample held stick while modal owns input.
+  Axis(0,0);Time.frameCount++;
+  Check(ControllerGameplayInput.PlayerButtonUp("Right"),"stick release during story reaches native movement cleanup");
+  foreach(string name in new[]{"Cancel","Inventory","CombatMode","UseItem1","UseItem5","UseItem6"}){
+   Input.Down.Add(name);Check(!ControllerGameplayInput.GameButtonDown(name),"story blocks named gameplay adapter "+name);
+  }
+  Input.Axes["Attack"]=-1;Input.Axes["Horizontal"]=1;
+  Check(ControllerGameplayInput.PlayerAxis("Attack")==0 && ControllerGameplayInput.PlayerAxis("Horizontal")==0,"story blocks native joystick axes while controller owned");
+  Check(!ControllerGameplayInput.GamePausePressed()&&!ControllerGameplayInput.GameDroidButtonDown("Droid",game)&&!ControllerGameplayInput.ExplorationPrimaryHeld()&&!ControllerGameplayInput.ExplorationContextSwitchPressed(),"story prevents pause/droid/exploration conflicts");
+  Tick(()=>Button(9,true));Check(toggles==0,"story blocks aim-assist toggle");
+  ControllerGameplayInput.ConsumeInventoryInput();story=false;
+  Check(!Hotkey(5)&&ControllerGameplayInput.PlayerAxis("Attack")==0,"story close frame remains consumed after modal hides");
+  Input.Axes.Clear();Tick(()=>Axis(5,short.MaxValue));
+  Check(ControllerGameplayInput.PlayerAxis("Attack")==0,"primary held during story must release before gameplay resumes");
+  Tick(()=>Axis(5,short.MinValue));ControllerGameplayInput.PlayerAxis("Attack");Tick(()=>Axis(5,short.MaxValue));
+  Check(ControllerGameplayInput.PlayerAxis("Attack")<0,"primary re-arms after fresh release following story");
+  Input.Axes["Attack"]=-1;
+  story=true;storyOwner=false;Input.Down.Add("Inventory");Input.Down.Add("Jump");
+  Check(ControllerGameplayInput.GameButtonDown("Inventory")&&ControllerGameplayInput.PlayerButtonDown("Jump")&&ControllerGameplayInput.PlayerAxis("Attack")==-1,"mouse/keyboard ownership retains exact native values with story still open");
+  Input.Down.Clear();Input.Held.Clear();Input.Up.Clear();Input.Axes.Clear();ControllerInputOwnership.Configure(()=>true);
   Console.WriteLine("Gameplay actions: "+checks+" checks passed.");
  }
 }

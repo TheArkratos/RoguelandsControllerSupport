@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <!-- Installed game files and locally generated references are never bundled. -->
+    <RoguelandsDir Condition="'$(RoguelandsDir)' == ''">$(ROGUELANDS_DIR)</RoguelandsDir>
+    <RoguelandsDir Condition="'$(RoguelandsDir)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Roguelands</RoguelandsDir>
+    <RoguelandsManagedDir>$(RoguelandsDir)/Roguelands_Data/Managed</RoguelandsManagedDir>
+    <RoguelandsReferenceDir Condition="'$(RoguelandsReferenceDir)' == ''">$(ROGUELANDS_REFERENCE_DIR)</RoguelandsReferenceDir>
+    <RoguelandsReferenceDir Condition="'$(RoguelandsReferenceDir)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../GameReference/Generated'))</RoguelandsReferenceDir>
+  </PropertyGroup>
+</Project>

@@ -21,9 +21,10 @@ namespace UnityEngine
         public Transform transform;
         public Collider collider;
         public Renderer renderer;
+        public object extraComponent;
         public NetworkView view = new NetworkView();
         public GameObject(string name = "") { this.name = name; transform = new Transform(this); }
-        public T GetComponent<T>() where T : class { return collider as T ?? renderer as T ?? view as T; }
+        public T GetComponent<T>() where T : class { return collider as T ?? renderer as T ?? view as T ?? extraComponent as T; }
         public T[] GetComponentsInChildren<T>(bool includeInactive = false) where T : class
         {
             var found=new List<T>();

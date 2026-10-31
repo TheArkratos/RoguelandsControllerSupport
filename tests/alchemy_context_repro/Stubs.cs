@@ -29,7 +29,7 @@ namespace UnityEngine
         public static implicit operator bool(Collider obj) { return obj != null; }
     }
 }
-public class Item { public int id, q; public string extraData; public Item(int id = 0, int q = 0) { this.id = id; this.q = q; } }
+public class Item { public int id, q, exp; public string extraData; public Item(int id = 0, int q = 0) { this.id = id; this.q = q; } }
 public partial class GameScript
 {
     public static bool inventoryOpen = true, pausing, dead, buildMode;

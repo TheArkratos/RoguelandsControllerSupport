@@ -19,6 +19,7 @@ namespace ControllerSupport
             internal bool ResolveTraced, LossTraced;
             internal PlayerScript Owner;
             internal Projectile Staff;
+            internal bool PlacementTarget;
             internal int WeaponId;
             internal float ProjectileSpeed;
         }
@@ -186,7 +187,7 @@ namespace ControllerSupport
         {
             Attack token=Retained(projectile);
             FieldInfo controller=typeof(Projectile).GetField("isController",BindingFlags.Instance|BindingFlags.NonPublic);
-            return ControllerInputOwnership.UsingController && projectile && token!=null && Local(token.Owner) && controller!=null && (bool)controller.GetValue(projectile);
+            return ControllerInputOwnership.UsingController && projectile && token!=null && Local(token.Owner) && (token.PlacementTarget || (controller!=null && (bool)controller.GetValue(projectile)));
         }
         private static Vector2 TargetVelocity(Collider target)
         {
@@ -269,7 +270,7 @@ namespace ControllerSupport
         }
         private static bool SafeGameplay()
         {
-            if(!MenuScript.player || !Camera.main || !GameScript.combatMode || GameScript.dead ||
+            if(ControllerInputOwnership.GameplayBlocked || !MenuScript.player || !Camera.main || !GameScript.combatMode || GameScript.dead ||
                 GameScript.pausing || GameScript.buildMode || GameScript.inventoryOpen || GameScript.talking ||
                 PlayerScript.beaming || GadgetCoreAPI.IsInputFrozen()) return false;
             NetworkView view=MenuScript.player.GetComponent<NetworkView>(); return view && view.isMine;
@@ -407,28 +408,61 @@ namespace ControllerSupport
             { if(staff!=null) StaffTargetCrosshair.Hide(staff.Staff); return Input.mousePosition; }
             if(!SafeGameplay() || !ControllerAim.TryWorldPoint(out visual))
             { if(ReferenceEquals(appliedVisual,staff)) ClearAppliedVisual(); StaffTargetCrosshair.Refresh(false); return Input.mousePosition; }
-            Vector2 origin=PlayerCenter(),axis=(Vector2)visual-origin;
+            Vector2 axis=(Vector2)visual-(Vector2)PlayerCenter();
             Vector2 fallback=AimLeadPrediction.StaffFallback(staff.Staff.transform.position,axis);
-            staff.Target=null; staff.Lost=false;
+            Vector3 point;
+            if(!TryLiveStaffPoint(staff,visual,staff.Staff.transform.position,
+                staff.Staff.speed+(staff.Staff.isSwathe?10f:0f),fallback,out point)) return Input.mousePosition;
+            if(Enabled) StaffTargetCrosshair.Set(staff.Staff,point);
+            return Camera.main.WorldToScreenPoint(point);
+        }
+        // Valflame creates a stationary/upward flame at the selected position.
+        // Re-evaluate every native summon, not just while its sword is attacking.
+        internal static bool TryValflamePoint(PlayerScript owner,out Vector3 point,out Attack placement)
+        {
+            point=Vector3.zero; placement=null;
+            Vector3 visual;
+            if(!ControllerInputOwnership.UsingController || !Local(owner) || !SafeGameplay() ||
+                !ControllerAim.TryWorldPoint(out visual)) return false;
+            placement=new Attack { Owner=owner,PlacementTarget=true,TraceId=++nextTraceId };
+            // An instant placement has no travel time to lead. With no target,
+            // preserve the ordinary white cursor position rather than the moving
+            // staff's look-ahead point, which would alter native summon range.
+            return TryLiveStaffPoint(placement,visual,PlayerCenter(),0,visual,out point);
+        }
+        internal static void CaptureValflame(Projectile projectile,Attack placement,Vector3 point)
+        {
+            if(!ControllerInputOwnership.UsingController || !projectile || placement==null ||
+                !placement.PlacementTarget || !Local(placement.Owner)) return;
+            placement.Staff=projectile;
+            Retain(projectile,placement);
+            if(Enabled) StaffTargetCrosshair.Set(projectile,point);
+        }
+        // Shared live ranking/loss/reacquisition and cone clamp. Moving staves
+        // supply projectile speed for lead; instant placements supply zero.
+        private static bool TryLiveStaffPoint(Attack tracking,Vector3 visual,Vector2 projectileOrigin,
+            float speed,Vector2 fallback,out Vector3 point)
+        {
+            Vector2 origin=PlayerCenter(),axis=(Vector2)visual-origin;
+            tracking.Target=null; tracking.Lost=false;
+            point=new Vector3(fallback.x,fallback.y,visual.z);
             if(Enabled)
             {
                 Attack selection=Acquire();
-                if(selection==null) return Input.mousePosition;
-                staff.Target=selection.Target;
-                if(staff.Target)
+                if(selection==null) return false;
+                tracking.Target=selection.Target;
+                if(tracking.Target)
                 {
-                    float speed=staff.Staff.speed+(staff.Staff.isSwathe?10f:0f);
-                    Vector2 predicted=AimLeadPrediction.Predict(staff.Staff.transform.position,staff.Target.bounds.center,TargetVelocity(staff.Target),speed);
-                    Vector2 point=AimAssistGeometry.ClampAim(origin,axis,predicted);
-                    appliedVisual=staff; appliedPoint=new Vector3(point.x,point.y,visual.z); appliedUntil=Time.unscaledTime+AppliedHighlightSeconds;
-                    StaffTargetCrosshair.Set(staff.Staff,appliedPoint);
-                    return Camera.main.WorldToScreenPoint(appliedPoint);
+                    Vector2 predicted=AimLeadPrediction.Predict(projectileOrigin,tracking.Target.bounds.center,
+                        TargetVelocity(tracking.Target),speed);
+                    Vector2 clamped=AimAssistGeometry.ClampAim(origin,axis,predicted);
+                    point=new Vector3(clamped.x,clamped.y,visual.z);
+                    appliedVisual=tracking; appliedPoint=point; appliedUntil=Time.unscaledTime+AppliedHighlightSeconds;
+                    return true;
                 }
             }
-            if(ReferenceEquals(appliedVisual,staff)) ClearAppliedVisual();
-            Vector3 fallbackPoint=new Vector3(fallback.x,fallback.y,visual.z);
-            if(Enabled) StaffTargetCrosshair.Set(staff.Staff,fallbackPoint);
-            return Camera.main.WorldToScreenPoint(fallbackPoint);
+            if(ReferenceEquals(appliedVisual,tracking)) ClearAppliedVisual();
+            return true;
         }
         internal static float CursorX() { Vector3 point; return ControllerAim.TryWorldPoint(out point)?Resolve(point).x:ControllerCursor.staticX; }
         internal static float CursorY() { Vector3 point; return ControllerAim.TryWorldPoint(out point)?Resolve(point).y:ControllerCursor.staticY; }

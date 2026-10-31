@@ -33,6 +33,7 @@ namespace UnityEngine
     }
     public class Transform
     {
+        public Vector3 eulerAngles;
         public Vector3 position;
         public static implicit operator bool(Transform value) => value != null;
     }
@@ -68,8 +69,10 @@ namespace UnityEngine
 }
 public class MenuScript { public static UnityEngine.GameObject player = new UnityEngine.GameObject(); }
 public class Menuu { public static bool usingController; }
+public class PlayerScript { public bool attacking; public UnityEngine.GameObject e; }
 public class GameScript
 {
+    public static int[] equippedIDs = new int[1];
     public static bool combatMode = true, dead, pausing, buildMode, inventoryOpen, talking;
 }
 namespace ControllerSupport

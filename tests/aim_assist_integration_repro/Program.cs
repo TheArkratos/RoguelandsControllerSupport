@@ -75,7 +75,85 @@ internal static class Program {
   }
   } finally {ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=previousDebugLines;}
  }
- private static void Main(){
+ private static Vector3 ValflameSummonPoint(Projectile spawned=null,PlayerScript owner=null) {
+  Type patch=typeof(ControllerAimAssist).Assembly.GetType("ControllerSupport.AimAssistValflamePatch");
+  object[] scope={owner??local,null};if(patch!=null)Private(patch,"Prefix").Invoke(null,scope);
+  try {
+   MethodInfo mouse=typeof(Input).GetProperty("mousePosition").GetGetMethod();
+   var rewritten=MouseOnlyHelperAimPatch.Transpiler(new[]{new CodeInstruction(OpCodes.Call,mouse)},typeof(PlayerScript).GetMethod("ValflameProj")).Single();
+   Vector3 point=(Vector3)((MethodInfo)rewritten.operand).Invoke(null,null);
+   if(spawned && patch!=null) {
+    var instantiate=typeof(UnityEngine.Object).GetMethod("Instantiate",new[]{typeof(UnityEngine.Object),typeof(Vector3),typeof(Quaternion)});
+    var instructions=(System.Collections.Generic.IEnumerable<CodeInstruction>)Private(patch,"Transpiler").Invoke(null,new object[]{new[]{new CodeInstruction(OpCodes.Call,instantiate)}});
+    var capture=instructions.Last();Check(((MethodInfo)capture.operand).Name=="Capture","Valflame native instantiate gets correlation hook");
+    object captured=((MethodInfo)capture.operand).Invoke(null,new object[]{spawned.gameObject});
+    Check(ReferenceEquals(captured,spawned.gameObject),"Valflame capture preserves original native spawn object");
+   }
+   return point;
+  } finally {if(patch!=null)Private(patch,"Finalizer").Invoke(null,new[]{null,scope[1]});}
+ }
+ private static void ValflameLiveRepro() {
+  Setup();GameScript.equippedIDs[0]=327;local.attacking=false;
+  var first=Enemy(8,.4f);Physics.Candidates=new[]{first};
+  Vector3 point=ValflameSummonPoint();
+  Check(point.x==8&&point.y>.1f,"Valflame summon independently targets an available enemy while no Attack is active");
+  Check(Physics.Searches==1,"one live target selection per automatic summon");
+  ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
+  var original=ControllerAimAssist.Current;var second=Enemy(11,-.5f);Physics.Candidates=new[]{second};
+  Next();point=ValflameSummonPoint();
+  Check(point.x==11&&point.y<0,"next automatic summon re-ranks independently of original attack target");
+  Check(ReferenceEquals(ControllerAimAssist.Current,original)&&original.Target==first,"summon targeting never replaces surrounding attack scope");
+  second.transform.position=new Vector3(11,6,0);Next();point=ValflameSummonPoint();
+  Check(point.x==14&&Math.Abs(point.y)<.001,"lost summon target falls back to white cursor rather than distant staff lookahead");
+  second.transform.position=new Vector3(11,-.5f,0);Next();point=ValflameSummonPoint();
+  Check(point.x==11&&point.y<0,"later automatic summon reacquires a target that returns to the cone");
+  second.gameObject.GetComponent<EnemyScript>().dead=true;Next();point=ValflameSummonPoint();
+  Check(point.x==14&&point.y==0,"dead target does not persist to later summons");
+  Setup();GameScript.equippedIDs[0]=327;Shader.Available.Clear();Shader.Available["Sprites/Default"]=new Shader{name="Sprites/Default",Color=true};GameObject nativeCursor;var valflameNativeGlyph=NativeGlyph(out nativeCursor);
+  var spawn=new GameObject("valflame-native").AddComponent<Projectile>();spawn.SetController(false);spawn.isStaff=false;spawn.speed=0;
+  first=Enemy(8,.4f);Physics.Candidates=new[]{first};
+  point=ValflameSummonPoint(spawn);
+  var marker=RedGlyphs().Single();
+  Check(marker.activeInHierarchy&&Math.Abs(marker.transform.position.x-point.x)<.001,"Valflame each summon publishes its actual target as red staff marker");
+  Check(ControllerAimAssist.StaffDisplayOwned(spawn),"local summon marker does not require native staff controller flag");
+  Check(!spawn.isStaff&&!((bool)typeof(Projectile).GetField("isController",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(spawn)),"marker correlation does not convert native flame to homing staff");
+  int searches=Physics.Searches;StaffTargetCrosshair.Refresh(true);Check(Physics.Searches==searches,"rendering summon marker never scans for targets");
+  var remote=new GameObject("remote").AddComponent<PlayerScript>();remote.gameObject.AddComponent<NetworkView>();
+  var remoteSpawn=new GameObject("remote-flame").AddComponent<Projectile>();remoteSpawn.SetController(false);
+  Input.mousePosition=new Vector3(100,200,1);point=ValflameSummonPoint(remoteSpawn,remote);
+  Check(point.x==100&&point.y==200&&Physics.Searches==searches,"remote summon preserves physical mouse and never acquires local targets");
+  Check(ControllerAimAssist.Retained(remoteSpawn)==null,"remote summon has no local marker token");
+  ControllerAimAssist.Toggle();Input.mousePosition=Vector3.zero;Next();point=ValflameSummonPoint();
+  Check(point.x==14&&point.y==0&&Physics.Searches==searches,"disabled assist preserves ordinary controller summon placement without searching");
+  ControllerAimAssist.Toggle();bool owned=false,modal=false;ControllerInputOwnership.Configure(()=>owned,()=>modal);
+  Input.mousePosition=new Vector3(71,22,1);point=ValflameSummonPoint();
+  Check(point.x==71&&point.y==22&&Physics.Searches==searches,"mouse ownership returns exact native summon pointer");
+  StaffTargetCrosshair.Refresh(true);Check(!marker||!marker.activeInHierarchy,"mouse handoff hides summon target marker");
+  owned=true;modal=true;point=ValflameSummonPoint();
+  Check(point.x==71&&point.y==22&&Physics.Searches==searches,"live story modal blocks summon assistance independently of input cache");
+  modal=false;GameScript.inventoryOpen=true;point=ValflameSummonPoint();
+  Check(point.x==71&&point.y==22&&Physics.Searches==searches,"inventory blocks summon assistance");
+  GameScript.inventoryOpen=false;local.gameObject.GetComponent<NetworkView>().isMine=false;point=ValflameSummonPoint();
+  Check(point.x==71&&point.y==22&&Physics.Searches==searches,"remote ownership transfer blocks summon assistance");
+  ControllerInputOwnership.Configure(()=>true);
+  var patch=typeof(AimAssistValflamePatch);var instantiate=typeof(UnityEngine.Object).GetMethod("Instantiate",new[]{typeof(UnityEngine.Object),typeof(Vector3),typeof(Quaternion)});
+  foreach(int count in new[]{0,2}) {
+   var bad=Enumerable.Range(0,count).Select(i=>new CodeInstruction(OpCodes.Call,instantiate)).ToArray();
+   var unchanged=((System.Collections.Generic.IEnumerable<CodeInstruction>)Private(patch,"Transpiler").Invoke(null,new object[]{bad})).ToArray();
+   Check(unchanged.Length==count&&unchanged.SequenceEqual(bad),"changed Valflame spawn count fails closed "+count);
+  }
+  var mouse=typeof(Input).GetProperty("mousePosition").GetGetMethod();
+  foreach(int count in new[]{0,2}) {
+   var bad=Enumerable.Range(0,count).Select(i=>new CodeInstruction(OpCodes.Call,mouse)).ToArray();
+   var unchanged=MouseOnlyHelperAimPatch.Transpiler(bad,typeof(PlayerScript).GetMethod("ValflameProj")).ToArray();
+   Check(unchanged.Length==count&&unchanged.SequenceEqual(bad),"changed Valflame mouse count fails closed "+count);
+  }
+  var originalCode=new CodeInstruction(OpCodes.Call,instantiate);originalCode.labels.Add(default(Label));originalCode.blocks.Add(new object());
+  var fixedCode=((System.Collections.Generic.IEnumerable<CodeInstruction>)Private(patch,"Transpiler").Invoke(null,new object[]{new[]{originalCode}})).ToArray();
+  Check(fixedCode.Length==2&&fixedCode[0].labels.Count==1&&fixedCode[0].blocks.Count==1&&fixedCode[1].labels.Count==0&&fixedCode[1].blocks.Count==0,"spawn correlation preserves native labels/exception boundaries on original instruction");
+  ControllerAimAssist.Reset();UnityEngine.Object.Destroy(nativeCursor.GetComponent<ActionCursor>());UnityEngine.Object.Destroy(valflameNativeGlyph);
+ }
+ private static void Main(){ValflameLiveRepro();
   Check(!ControllerAimAssist.ControllerCombatModeDebugLinesEnabled,"diagnostic lines default disabled");
   ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=true; // Explicit opt-in for legacy diagnostic rendering checks.
   // Exercise real effect/render entry points with shared mouse ownership while
@@ -153,14 +231,16 @@ internal static class Program {
   Setup();var hive=new GameObject("hive").AddComponent<Hivemind>();hive.hp=100;var box=new GameObject("hive-box"){layer=9};box.transform.position=new Vector3(8,0,0);box.AddComponent<HivemindBox>().p=hive.gameObject;hitbox=box.AddComponent<BoxCollider>();Physics.Candidates=new Collider[]{hitbox};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Check(ControllerAimAssist.Current.Target==hitbox,"Hivemind TD proxy resolves authoritative living owner");
   Setup();var dummy=new GameObject("inert-TD-like-object"){layer=9};dummy.transform.position=new Vector3(8,0,0);Physics.Candidates=new Collider[]{dummy.AddComponent<BoxCollider>()};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});Check(ControllerAimAssist.Current.Target==null,"Unverified layer-only damage-like props are excluded");
   Setup();pad=new JoystickInputState();pad.Connect();ControllerAim.Configure(()=>pad);ControllerAimAssist.Configure();Next();
-  Check(!ControllerAim.TryWorldPoint(out visual),"Neutral stick has not claimed aim before enabling indicator");
+  Check(ControllerAim.TryWorldPoint(out visual)&&Math.Abs(visual.x-14)<.001f&&Math.Abs(visual.y)<.001f,"Neutral controller entry claims safe horizontal aim before enabling indicator");
   var indicatorType=typeof(ControllerAimAssist).GetNestedType("AimAssistIndicator",BindingFlags.NonPublic);
+  ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=false; // Count the enabled marker separately from the now-owned neutral cone.
   object marker=Activator.CreateInstance(indicatorType,true);var draw=indicatorType.GetMethod("OnGUI",BindingFlags.Instance|BindingFlags.NonPublic);
-  GUI.Draws=0;draw.Invoke(marker,null);Check(GUI.Draws==1&&Physics.Searches==0,"Enabled marker draws immediately without aim ownership or idle acquisition");
-  Input.mousePosition=new Vector3(40,20,0);Next();draw.Invoke(marker,null);Check(GUI.Draws==2,"Enabled marker remains visible during mouse aim ownership");
+  GUI.Draws=0;draw.Invoke(marker,null);Check(GUI.Draws==1&&Physics.Searches==0,"Enabled marker draws immediately on neutral entry without attack or idle acquisition");
+  Input.mousePosition=new Vector3(40,20,0);Next();draw.Invoke(marker,null);Check(GUI.Draws==2&&!ControllerAim.TryWorldPoint(out visual),"Enabled marker remains visible during mouse aim ownership");
   GameScript.inventoryOpen=true;draw.Invoke(marker,null);Check(GUI.Draws==2,"Inventory hides enabled marker");GameScript.inventoryOpen=false;
   GadgetCore.API.GadgetCoreAPI.Frozen=true;draw.Invoke(marker,null);Check(GUI.Draws==2,"Frozen gameplay hides enabled marker");GadgetCore.API.GadgetCoreAPI.Frozen=false;
   ControllerAimAssist.Toggle();draw.Invoke(marker,null);Check(GUI.Draws==2,"Disabled setting hides marker");
+  ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=true;
   // Shmoo prefab evidence: resources.assets layer28, unit transform,
   // BoxCollider size(3,3,3), center(.2,-.5,0), EnemyScript starting hp15.
   Setup();var logs=new List<string>();ControllerAimAssist.Trace=logs.Add;
@@ -296,6 +376,15 @@ internal static class Program {
   ControllerAimAssist.Reset();ControllerAimAssist.StartSession();Check(ControllerAimAssist.Enabled,"Next gadget session starts enabled again");ControllerAimAssist.Reset();
   ControllerAimAssist.ControllerCombatModeDebugLinesEnabled=false;
   DebugPresentationToggle();
+  bool storyModal=false;ControllerInputOwnership.Configure(()=>true,()=>storyModal);Setup();
+  var storyEnemy=Enemy(8,1);Physics.Candidates=new[]{storyEnemy};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
+  Check(ControllerAimAssist.Current.Target==storyEnemy,"pre-modal attack acquires target");
+  storyModal=true;Vector3 storyWhite;
+  Check(!ControllerAim.TryWorldPoint(out storyWhite),"live story modal defeats same-frame cached controller aim");
+  Check(Point().x==Input.mousePosition.x&&Point().y==Input.mousePosition.y,"modal attack aim falls back to exact native pointer");
+  int storySearches=Physics.Searches;ControllerAimAssist.Acquire();
+  Check(ControllerAimAssist.Current.Target==null&&Physics.Searches==storySearches,"story modal blocks assist acquisition and clears target");
+  ControllerInputOwnership.Configure(()=>true);
   Console.WriteLine("Aim assist integration: "+checks+" checks passed.");
  }
 }

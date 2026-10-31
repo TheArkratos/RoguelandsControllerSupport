@@ -1,10 +1,10 @@
 using System;
 namespace GadgetCore.API
 {
-    [Flags] public enum ItemType { NONSTACKING=1, WEAPON=2, OFFHAND=4, HELMET=8, ARMOR=16, RING=32, DROID=64, EQUIP_MASK=126, LOOT=128, ORGANIC=256, EQUIPABLE=512, EMBLEM=LOOT|1024 }
+    [Flags] public enum ItemType { NONSTACKING=1, WEAPON=2, OFFHAND=4, HELMET=8, ARMOR=16, RING=32, DROID=64, EQUIP_MASK=126, LOOT=128, ORGANIC=256, EQUIPABLE=512, EMBLEM=LOOT|1024, MODABLE=2048 }
     public static class ItemRegistry
     {
-        public static ItemType GetTypeByID(int id) { return id == 500 ? ItemType.WEAPON | ItemType.NONSTACKING : id >= 11 && id <= 39 ? ItemType.LOOT | ItemType.ORGANIC : id >= 101 && id <= 199 ? ItemType.EMBLEM : 0; }
+        public static ItemType GetTypeByID(int id) { return id == 10001 ? ItemType.MODABLE | ItemType.NONSTACKING : id == 500 ? ItemType.WEAPON | ItemType.NONSTACKING : id >= 11 && id <= 39 ? ItemType.LOOT | ItemType.ORGANIC : id >= 101 && id <= 199 ? ItemType.EMBLEM : 0; }
     }
     public static class GadgetCoreAPI
     {

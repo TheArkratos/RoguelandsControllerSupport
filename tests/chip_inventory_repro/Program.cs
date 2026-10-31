@@ -15,6 +15,7 @@ internal static class Program
     static void Frame(){Time.frameCount++;Time.unscaledTime+=.05f;ControllerMenuSelection.Prepare(game);}
     static void Next(){ControllerMenuSelection.EndNativeUpdate();pad.BeginFrame();Frame();}
     static void Button(int n,bool held=true){ControllerMenuSelection.EndNativeUpdate();pad.BeginFrame();pad.Apply(new RawJoystickEvent{Type=1,Number=(byte)n,Value=(short)(held?1:0)});Frame();}
+    static void Trigger(){ControllerMenuSelection.EndNativeUpdate();pad.BeginFrame();pad.Apply(new RawJoystickEvent{Type=2,Number=5,Value=short.MaxValue});Frame();}
     static bool Left => ControllerMenuSelection.VirtualMouseButtonDown(0);
     static void Hover(int i){Physics.Hit=cells[i];Input.mousePosition=new Vector3(Input.mousePosition.x+3,0);Next();Next();}
     static void Setup(string config=null)
@@ -51,7 +52,7 @@ internal static class Program
         Next();Check(!Left,"held primary cannot repeatedly activate");Button(0,false);Hover(7);Button(0);Replay();Check(game.combatChips[7]==1&&!game.holdingCombatChip,"native placement updates chip slot");
         Button(0,false);Hover(6);Button(0);Replay();Button(0,false);Hover(7);Button(0);Replay();Check(game.combatChips[7]==2&&game.holdingItem.id==1&&game.holdingCombatChip,"native swap keeps held chip identity");
         Button(0,false);Button(1);Check(InventoryItemLifecycle.ReturnCalls==1,"cancel recognizes held quantity-zero chip");
-        game.holdingItem=new Item{id=3};game.holdingCombatChip=true;Button(1,false);Button(5);Check(InventoryItemLifecycle.DropCalls==1,"dedicated Drop recognizes chip");
+        game.holdingItem=new Item{id=3};game.holdingCombatChip=true;Button(1,false);Trigger();Check(InventoryItemLifecycle.DropCalls==1,"dedicated RT Drop recognizes chip");
         Setup();Hover(0);Button(2);Check(!ControllerMenuSelection.VirtualMouseButtonDown(1),"secondary cannot split native chips");Button(2,false);Button(3);Check(!Left,"transfer does not invent a chip transfer");
         Setup();Hover(0);game.exitingcombatmode=true;Button(0);Check(!Left,"native exit cooldown blocks chip selection");
         Setup();Hover(0);GadgetCoreAPI.Frozen=true;Button(0);Check(!Left,"modal freeze blocks chip action");GadgetCoreAPI.Frozen=false;Next();Check(!Left,"unfreeze does not replay held action");Button(0,false);Button(0);Check(Left,"fresh primary after freeze is allowed");
@@ -61,7 +62,7 @@ internal static class Program
         Setup();Hover(0);game.holdingItem=new Item{id=1};game.holdingCombatChip=true;Button(0);Check(!Left,"same ID cannot trigger invented chip mutation");
         Setup();Hover(0);ControllerMenuSelection.Update(game);Check(InventoryFeedback.Primary=="Pick up chip","chip hint uses native chip action");
         int count=game.ChipPickups+game.ChipPlaces+game.ChipSwaps;for(int i=0;i<100;i++)CombatChipMenuContext.ActionLabel(game,152);Check(count==game.ChipPickups+game.ChipPlaces+game.ChipSwaps,"hint polling cannot move chips");
-        Setup(BindingConfig.DefaultText.Replace("MenuActivate = Joystick1Button0","MenuActivate = Joystick1Button12").Replace("MenuDrop = Joystick1Button5","MenuDrop = Joystick1Button13"));
+        Setup(BindingConfig.DefaultText.Replace("MenuActivate = Joystick1Button0","MenuActivate = Joystick1Button12").Replace("MenuDrop = RightTrigger","MenuDrop = Joystick1Button13"));
         Hover(0);Button(0);Check(!Left,"old activate binding no longer moves chips after remap");Button(0,false);Button(12);Replay();
         Button(12,false);Button(13);Check(InventoryItemLifecycle.DropCalls==1,"remapped dedicated drop works on held chip");
         Setup();Hover(0);game.holdingItem=new Item{id=2};game.holdingCombatChip=true;ControllerMenuSelection.Update(game);

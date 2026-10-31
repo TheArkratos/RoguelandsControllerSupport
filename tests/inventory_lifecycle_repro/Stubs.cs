@@ -11,7 +11,7 @@ namespace UnityEngine
         public Vector3(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }
         public static Vector3 operator +(Vector3 a, Vector3 b) { return new Vector3(a.x + b.x, a.y + b.y, a.z + b.z); }
     }
-    public class Transform { public Vector3 position; }
+    public class Transform { public Vector3 position, eulerAngles; }
     public class Object { }
     public struct Quaternion { }
     public static class Network
@@ -23,7 +23,11 @@ namespace UnityEngine
         public static void Destroy(Object spawned)
         { if (FailDestroy) throw new Exception("Network destroy failure"); Live.Remove(spawned); }
     }
-    public class GameObject : Object { public bool activeSelf; public Transform transform = new Transform(); }
+    public class GameObject : Object { public bool activeSelf; public Transform transform = new Transform(); public object Component; public T GetComponent<T>() where T : class { return typeof(T)==typeof(NetworkView) ? new NetworkView() as T : Component as T; } }
+    public class NetworkView { public bool isMine=true; }
+    public class Camera { public static Camera main=new Camera(); public Vector3 WorldToScreenPoint(Vector3 v){return v;} public Vector3 ScreenToWorldPoint(Vector3 v){return v;} }
+    public static class Input { public static Vector3 mousePosition {get;set;} }
+    public static class Debug { public static void LogWarning(string s){} }
     public class AudioClip { }
     public class AudioSource { public void PlayOneShot(AudioClip clip, float volume) { } }
     public static class Resources { public static object Load(string path) { return new AudioClip(); } }
@@ -74,7 +78,7 @@ namespace HarmonyLib
     public class HarmonyFinalizer : Attribute { }
     public class HarmonyPriority : Attribute { public HarmonyPriority(int priority) { } }
     public static class Priority { public const int First = 800, Last = 0; }
-    public static class AccessTools { public static MethodInfo Method(Type t, string n, Type[] types) { return t.GetMethod(n, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static, null, types, null); } }
+    public static class AccessTools { public static MethodInfo Method(Type t, string n, Type[] types=null) { return types==null?t.GetMethod(n, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static):t.GetMethod(n, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static, null, types, null); } }
 }
 public class Item
 {
@@ -84,13 +88,31 @@ public class Item
     public Item(int id, int q, int exp, int tier, int corrupted, int[] aspect, int[] aspectLvl) : this(id, q) { }
 }
 public class ItemScript { }
-public static class PlayerScript { public static UnityEngine.GameObject curInteractObj; }
+public class PlayerScript { public static UnityEngine.GameObject curInteractObj; public UnityEngine.GameObject e; }
 public static class MenuScript { public static UnityEngine.GameObject player; }
-public static class Menuu { public static float soundLevel = 10; }
+public static class Menuu { public static float soundLevel = 10; public static bool usingController; }
 public class GameScript
 {
     public Item holdingItem;
-    public Item[] inventory = NewItems(45), storage = NewItems(432), craft = NewItems(4);
+    public Item[] inventory = NewItems(45), storage = NewItems(432), craft = NewItems(4), gatherStorage = NewItems(9);
+    public UnityEngine.GameObject menuGather = new UnityEngine.GameObject { activeSelf = false };
+    public Item[] modSlot = NewItems(1);
+    public UnityEngine.GameObject menuGearMods = new UnityEngine.GameObject { activeSelf = false };
+    public UnityEngine.GameObject menuQuest = new UnityEngine.GameObject { activeSelf = false };
+    public Item[] inventoryQuest = NewItems(3);
+    public int QuestClaims, QuestXp, QuestGeneration;
+    public void NPCQuest() { menuStorage.activeSelf=menuPlanets.activeSelf=menuEmblemForge.activeSelf=menuTrasher.activeSelf=menuPrism.activeSelf=menuCraft.activeSelf=menuRecipe.activeSelf=menuCombat.activeSelf=menuGather.activeSelf=menuGearMods.activeSelf=false;menuQuest.activeSelf=true;inventoryOpen=true; }
+    public void SelectItemQuest(int slot) { QuestClaims++;QuestXp++;holdingItem=inventoryQuest[slot];inventoryQuest[slot]=new Item(0,0);QuestGeneration++;RefreshHoldingSlot(); }
+    public void Shuffle() { QuestGeneration++; }
+    public int ModPlaces;
+    public void NPCGearMod() { menuStorage.activeSelf=menuPlanets.activeSelf=menuEmblemForge.activeSelf=menuTrasher.activeSelf=menuPrism.activeSelf=menuCraft.activeSelf=menuRecipe.activeSelf=menuCombat.activeSelf=menuGather.activeSelf=false;menuGearMods.activeSelf=true;inventoryOpen=true; }
+    public void SelectItemMod(int slot) { holdingItem=modSlot[slot];modSlot[slot]=new Item(0,0);RefreshHoldingSlot(); }
+    public void SwapItemMod(int slot) { var previous=holdingItem;holdingItem=modSlot[slot];modSlot[slot]=previous;RefreshHoldingSlot(); }
+    public void PlaceItemMod(int slot) { if(RejectPlace)return;ModPlaces++;modSlot[slot]=holdingItem;holdingItem=new Item(0,0);RefreshHoldingSlot(); }
+    public void AddMod(int slot) { }
+    public void DropModItems() { }
+    public int GatherRefreshes;
+    public bool ThrowGatherRefresh;
     public int craftType;
     public UnityEngine.GameObject menuCraft = new UnityEngine.GameObject(), menuRecipe = new UnityEngine.GameObject();
     public int curStoragePage;
@@ -107,12 +129,17 @@ public class GameScript
 
     public bool RejectPlace;
     public bool ThrowRefresh;
+    public static bool combatMode,dead,pausing,buildMode;
     public static bool inventoryOpen = true;
     public UnityEngine.GameObject menuStorage = new UnityEngine.GameObject { activeSelf = true };
     public UnityEngine.GameObject menuPlanets = new UnityEngine.GameObject { activeSelf = false };
     public UnityEngine.GameObject menuEmblemForge = new UnityEngine.GameObject { activeSelf = false };
     public UnityEngine.GameObject menuTrasher = new UnityEngine.GameObject { activeSelf = false };
     public UnityEngine.GameObject menuPrism = new UnityEngine.GameObject { activeSelf = false };
+    public void Gather() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = menuTrasher.activeSelf = menuPrism.activeSelf = menuCraft.activeSelf = menuRecipe.activeSelf = menuCombat.activeSelf = false; menuGather.activeSelf = true; inventoryOpen = true; }
+    public void SelectItemGather(int slot) { holdingItem = gatherStorage[slot]; gatherStorage[slot] = new Item(0, 0); RefreshSlotGather(slot); RefreshHoldingSlot(); }
+    public void RefreshSlotGather(int slot) { GatherRefreshes++; if (ThrowGatherRefresh) throw new Exception("Gather cosmetic failure"); }
+    public System.Collections.IEnumerator ShiftClickGather(int slot) { yield return null; }
     public void Prism() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = menuTrasher.activeSelf = false; menuPrism.activeSelf = true; inventoryOpen = true; }
     public void PrismItem(int slot) { int amount = inventory[slot].q / 10; inventory[slot].q -= amount * 10; holdingItem = new Item(inventory[slot].id + 3, amount); }
     public void Trash() { menuStorage.activeSelf = menuPlanets.activeSelf = menuEmblemForge.activeSelf = false; menuTrasher.activeSelf = true; inventoryOpen = true; }
@@ -151,3 +178,6 @@ public class GameScript
     public void SplitItem(int s) { holdingItem = new Item(inventory[s].id, inventory[s].q / 2) { extra = inventory[s].extra }; inventory[s].q -= holdingItem.q; }
     public void SplitItemStorage(int s) { int i = StorageIndex(s); holdingItem = new Item(storage[i].id, storage[i].q / 2) { extra = storage[i].extra }; storage[i].q -= holdingItem.q; }
 }
+
+public static class ControllerCursor { public static float staticX; }
+namespace ControllerSupport { internal static class ControllerAim { internal static bool TryWalkingFacingX(out float x){x=0;return false;} } }

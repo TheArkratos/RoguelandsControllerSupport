@@ -1,0 +1,32 @@
+# Private runtime state and preserved recovery evidence, including moved profiles.
+[Bb][Aa][Cc][Kk][Uu][Pp][Ss]/
+[Bb][Aa][Cc][Kk][Uu][Pp]/
+[Pp][Rr][Oo][Ff][Ii][Ll][Ee]/
+[Pp][Rr][Oo][Ff][Ii][Ll][Ee][Ss]/
+[Ss][Aa][Vv][Ee]/
+[Ss][Aa][Vv][Ee][Ss]/
+[Ss]ave [Bb]ackups/
+*[Pp][Ll][Aa][Yy][Ee][Rr][Pp][Rr][Ee][Ff][Ss]*
+*.[Ss][Aa][Vv]
+*.[Ss][Aa][Vv][Ee]
+*.[Bb][Aa][Kk]*
+*.[Bb][Aa][Cc][Kk][Uu][Pp]
+*.log
+launch.lock
+
+# Local native test input and private save-edit receipts are never published.
+/tests/gear_forge_context_repro/NativeGearRecipe.cs
+/Reports/*grant*.json
+
+# Local references, build outputs and caches.
+/GameReference/
+/References/
+/build/
+**/bin/
+**/obj/
+**/__pycache__/
+*.pyc
+*.dll
+*.exe
+*.pdb
+*.zip

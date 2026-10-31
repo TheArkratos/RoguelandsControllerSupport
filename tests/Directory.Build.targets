@@ -1,7 +1,22 @@
 <Project>
   <!-- These fixtures compile production source directly. Share the real policy,
        while keeping the legacy positive-fixture default explicitly test-only. -->
+  <Target Name="ValidateRoguelandsReference" BeforeTargets="CoreCompile"
+          Condition="'$(RequiresRoguelandsReference)' == 'true'">
+    <Error Condition="!Exists('$(RoguelandsReferenceDir)/Assembly-CSharp')"
+           Text="This native-source fixture requires locally generated references. Set ROGUELANDS_REFERENCE_DIR to the GameReference/Generated directory; generated game source is not included in this repository." />
+  </Target>
   <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)LocalReferences.cs" />
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RoguelandsManagedDir</_Parameter1><_Parameter2>$(RoguelandsManagedDir)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RoguelandsReferenceDir</_Parameter1><_Parameter2>$(RoguelandsReferenceDir)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RoguelandsSdkDir</_Parameter1><_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildSDKsPath)/..'))</_Parameter2>
+    </AssemblyAttribute>
     <Compile Include="$(MSBuildThisFileDirectory)../src/ControllerInputOwnership.cs" Link="ControllerInputOwnership.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ControllerOwnershipTestBootstrap.cs"
              Condition="'$(ControllerOwnershipTestBootstrap)' != 'false'" />

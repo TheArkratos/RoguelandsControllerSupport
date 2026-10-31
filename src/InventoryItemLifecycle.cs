@@ -13,6 +13,10 @@ namespace ControllerSupport
         private static readonly FieldInfo Inventory = AccessToolsField("inventory");
         private static readonly FieldInfo Storage = AccessToolsField("storage");
         private static readonly FieldInfo Craft = AccessToolsField("craft");
+        private static readonly FieldInfo QuestMenu = AccessToolsField("menuQuest");
+        private static readonly FieldInfo ModSlot = AccessToolsField("modSlot"), ModMenu = AccessToolsField("menuGearMods");
+        private static readonly FieldInfo Gather = AccessToolsField("gatherStorage");
+        private static readonly FieldInfo GatherMenu = AccessToolsField("menuGather");
         private static readonly FieldInfo CraftMenu = AccessToolsField("menuCraft");
         private static readonly FieldInfo RecipeMenu = AccessToolsField("menuRecipe");
         private static readonly FieldInfo CraftType = AccessToolsField("craftType");
@@ -28,7 +32,8 @@ namespace ControllerSupport
         private static int scene = -1;
         private static int sourceSlot = -1;
         private static int sourcePage;
-        private static bool sourceStorage, sourceCraft, sourceChip;
+        private static bool sourceStorage, sourceCraft, sourceChip, sourceGather, sourceMod, sourceQuestReward;
+        private static GameObject sourceGatherMenu, sourceModMenu;
         private static GameObject sourceChipMenu;
         private static int sourceCraftType = -1, interactionCraftType = -1;
         private static bool returning;
@@ -68,7 +73,7 @@ namespace ControllerSupport
         {
             if (game == null || CraftType == null) return null;
             int kind = (int)CraftType.GetValue(game);
-            if (kind != 0 && kind != 1) return null;
+            if (kind != 0 && kind != 1 && kind != 2) return null;
             GameObject pane = CraftMenu == null ? null : CraftMenu.GetValue(game) as GameObject;
             GameObject recipes = RecipeMenu == null ? null : RecipeMenu.GetValue(game) as GameObject;
             // Keep a stable opener identity when the recipe book replaces the
@@ -97,13 +102,19 @@ namespace ControllerSupport
             GameObject prism = PrismMenu == null ? null : PrismMenu.GetValue(game) as GameObject;
             GameObject crafting = CraftingRoot(game);
             GameObject chips = ChipRoot(game);
+            GameObject gather = GatherRoot(game);
+            GameObject modification = ModRoot(game);
+            GameObject quests = QuestMenu == null ? null : QuestMenu.GetValue(game) as GameObject;
             GameObject root = !GameScript.inventoryOpen ? null
                 : game.menuStorage != null && game.menuStorage.activeSelf ? game.menuStorage
                 : portal != null && portal.activeSelf ? portal
                 : forge != null && forge.activeSelf ? forge
                 : trasher != null && trasher.activeSelf ? trasher
                 : prism != null && prism.activeSelf ? prism
-                : chips != null && chips.activeSelf ? chips : crafting;
+                : chips != null && chips.activeSelf ? chips
+                : gather != null && gather.activeSelf ? gather
+                : modification != null && modification.activeSelf ? modification
+                : quests != null && quests.activeSelf ? quests : crafting;
             int craftingType = root != null && ReferenceEquals(root, crafting) ? (int)CraftType.GetValue(game) : -1;
             if (!ReferenceEquals(root, interactionRoot) || interactionCraftType != craftingType)
             {
@@ -119,7 +130,7 @@ namespace ControllerSupport
                     interactionCaptured = true;
                 }
             }
-            if (!HasHeldItem(game)) sourceSlot = -1;
+            if (!HasHeldItem(game)) { sourceSlot = -1; sourceQuestReward = false; }
         }
 
         // Called around native methods, including physical mouse actions. Tracking
@@ -131,32 +142,62 @@ namespace ControllerSupport
         internal static void RecordCraftSource(GameScript game, int slot)
         { RecordSource(game, slot, 0, false, true); }
 
+        private static GameObject GatherRoot(GameScript game)
+        { return game == null || GatherMenu == null ? null : GatherMenu.GetValue(game) as GameObject; }
+
+        internal static void RecordGatherSource(GameScript game, int slot)
+        { RecordSource(game, slot, 0, false, false, true); }
+
+        private static GameObject ModRoot(GameScript game)
+        { return game == null || ModMenu == null ? null : ModMenu.GetValue(game) as GameObject; }
+
+        internal static void RecordModSource(GameScript game, int slot)
+        { RecordSource(game, slot, 0, false, false, false, true); }
+
+        internal static void RecordQuestReward(GameScript game)
+        {
+            ObserveContext(game);
+            if (returning || !HasHeldItem(game)) return;
+            // Claiming completed the old quest and generated its replacement.
+            // Never restore into inventoryQuest or preserve another pickup source.
+            sourceSlot = -1;
+            sourceStorage = sourceCraft = sourceChip = sourceGather = sourceMod = false;
+            sourceQuestReward = true;
+        }
+
         internal static void RecordChipSource(GameScript game, int slot)
         {
             ObserveContext(game);
             if (returning || !IsHoldingChip(game)) return;
             sourceSlot = slot;
-            sourceStorage = sourceCraft = false;
+            sourceStorage = sourceCraft = sourceGather = sourceMod = sourceQuestReward = false;
+            sourceModMenu = null;
+            sourceGatherMenu = null;
             sourceCraftType = -1;
             sourceChip = true;
             sourceChipMenu = ChipRoot(game);
         }
 
-        private static void RecordSource(GameScript game, int slot, int page, bool storage, bool crafting)
+        private static void RecordSource(GameScript game, int slot, int page, bool storage, bool crafting, bool gather = false, bool modification = false)
         {
             ObserveContext(game);
             if (returning || !HasHeldItem(game)) return;
             sourceSlot = slot;
+            sourceQuestReward = false;
             sourcePage = page;
             sourceStorage = storage;
             sourceCraft = crafting;
+            sourceMod = modification;
+            sourceModMenu = modification ? ModRoot(game) : null;
+            sourceGather = gather;
+            sourceGatherMenu = gather ? GatherRoot(game) : null;
             sourceChip = false; sourceChipMenu = null;
             sourceCraftType = crafting && CraftType != null ? (int)CraftType.GetValue(game) : -1;
         }
 
         internal static void ClearIfEmpty(GameScript game)
         {
-            if (ReferenceEquals(owner, game) && !HasHeldItem(game)) sourceSlot = -1;
+            if (ReferenceEquals(owner, game) && !HasHeldItem(game)) { sourceSlot = -1; sourceQuestReward = false; }
         }
 
         internal static bool TryReturn(GameScript game, out string reason)
@@ -169,17 +210,24 @@ namespace ControllerSupport
             if (IsHoldingChip(game)) return ReturnChip(game, out reason);
             if (sourceChip)
             { reason = "The held item's original type is unavailable."; return false; }
+            if (sourceQuestReward) return ReturnQuestReward(game, out reason);
             if (sourceSlot < 0) { reason = "The held item's source is unavailable."; return false; }
+            if (sourceGather) return ReturnGather(game, out reason);
             if (sourceCraft && (!GameScript.inventoryOpen || CraftingRoot(game) == null || Craft == null ||
                 CraftType == null || sourceCraftType != (int)CraftType.GetValue(game)))
             { reason = "The original crafting station is unavailable."; return false; }
-            FieldInfo source = sourceCraft ? Craft : sourceStorage ? Storage : Inventory;
+            if (sourceMod && (!GameScript.inventoryOpen || ModRoot(game) == null || !ModRoot(game).activeSelf ||
+                !ReferenceEquals(ModRoot(game), sourceModMenu) || sourceSlot != 0))
+            { reason = "The original Gear Modification station is unavailable."; return false; }
+            FieldInfo source = sourceMod ? ModSlot : sourceCraft ? Craft : sourceStorage ? Storage : Inventory;
             Item[] items = source == null ? null : source.GetValue(game) as Item[];
             int index = sourceStorage ? MapStorageSlot(sourcePage, sourceSlot, items == null ? 0 : items.Length) : sourceSlot;
             if (items == null || index < 0 || index >= items.Length)
             { reason = "The original slot is unavailable."; return false; }
             Item target = items[index];
             bool empty = Empty(target);
+            if (!empty && sourceMod)
+            { reason = "The original modification slot is occupied."; return false; }
             if (!empty && (!GadgetCoreAPI.CanItemsStack(target, held) || target.q > 9999 - held.q))
             { reason = "The original slot cannot accept the entire held stack."; return false; }
             int previousPage = CurrentPage(game);
@@ -187,7 +235,13 @@ namespace ControllerSupport
             try
             {
                 if (sourceStorage) Page.SetValue(game, sourcePage);
-                if (sourceCraft)
+                if (sourceMod)
+                {
+                    MethodInfo placement = typeof(GameScript).GetMethod("PlaceItemMod", new[] { typeof(int) });
+                    if (placement == null) { reason = "Gear Modification return is unavailable."; return false; }
+                    placement.Invoke(game, new object[] { sourceSlot });
+                }
+                else if (sourceCraft)
                 {
                     // Return only the complete, still-held native item to its
                     // exact source, including the output slot. Native placement
@@ -230,6 +284,62 @@ namespace ControllerSupport
             }
         }
 
+        // Gather outputs are take-only in the native UI, so there is no native
+        // placement method to invoke. Cancellation restores only the whole held
+        // pickup to its recorded source; it never permits arbitrary deposit/swap.
+        private static bool ReturnGather(GameScript game, out string reason)
+        {
+            reason = null;
+            GameObject menu = GatherRoot(game);
+            Item[] items = Gather == null ? null : Gather.GetValue(game) as Item[];
+            if (!GameScript.inventoryOpen || menu == null || !menu.activeSelf ||
+                !ReferenceEquals(menu, sourceGatherMenu) || items == null || sourceSlot < 0 ||
+                sourceSlot >= 9 || sourceSlot >= items.Length)
+            { reason = "The original ship droid output is unavailable."; return false; }
+            Item held = Held(game), target = items[sourceSlot];
+            bool empty = Empty(target);
+            if (!empty && (ReferenceEquals(target, held) || !GadgetCoreAPI.CanItemsStack(target, held) ||
+                target.q > 9999 - held.q))
+            { reason = "The original output cannot accept the entire held stack."; return false; }
+            int quantity = target == null ? 0 : target.q;
+            returning = true;
+            try
+            {
+                try
+                {
+                    if (empty) items[sourceSlot] = held;
+                    else target.q += held.q;
+                    Holding.SetValue(game, EmptyItem());
+                }
+                catch
+                {
+                    // No callbacks run until both item owners are committed.
+                    // Undo a failed field/array assignment before retaining hand.
+                    items[sourceSlot] = target;
+                    if (target != null) target.q = quantity;
+                    Holding.SetValue(game, held);
+                    reason = "The item could not be returned safely.";
+                    return false;
+                }
+                int slot = sourceSlot;
+                sourceSlot = -1;
+                // Native refresh functions retain artwork/tooltip integration.
+                // A cosmetic failure cannot refund a duplicate of a committed item.
+                try
+                {
+                    MethodInfo refresh = typeof(GameScript).GetMethod("RefreshSlotGather",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                        null, new[] { typeof(int) }, null);
+                    if (refresh != null) refresh.Invoke(game, new object[] { slot });
+                }
+                catch { }
+                try { game.RefreshHoldingSlot(); } catch { }
+                PlaySound(game, "Au/confirm");
+                return true;
+            }
+            finally { returning = false; }
+        }
+
         private static bool ReturnChip(GameScript game, out string reason)
         {
             reason = null;
@@ -267,6 +377,41 @@ namespace ControllerSupport
             finally { returning = false; }
         }
 
+        private static bool ReturnQuestReward(GameScript game, out string reason)
+        {
+            reason = "Place the claimed reward in your inventory or drop it before closing.";
+            Item held = Held(game);
+            Item[] items = Inventory == null ? null : Inventory.GetValue(game) as Item[];
+            if (items == null || held == null || held.q > 9999) return false;
+            int destination = -1;
+            for (int i = 6; i < Math.Min(36, items.Length); i++)
+                if (!Empty(items[i]) && !ReferenceEquals(items[i], held) &&
+                    GadgetCoreAPI.CanItemsStack(items[i], held) && items[i].q <= 9999 - held.q)
+                { destination = i; break; }
+            if (destination < 0)
+                for (int i = 6; i < Math.Min(36, items.Length); i++)
+                    if (Empty(items[i])) { destination = i; break; }
+            // Single full-stack fit only: no partial mutation if capacity is short.
+            if (destination < 0) return false;
+            returning = true;
+            try
+            {
+                if (Empty(items[destination])) game.PlaceItem(destination);
+                else game.CombineItem(destination);
+                if (HasHeldItem(game)) return false;
+                sourceQuestReward = false; sourceSlot = -1; reason = null;
+                PlaySound(game, "Au/confirm");
+                return true;
+            }
+            catch
+            {
+                // Native placement may commit before a cosmetic callback throws.
+                if (!HasHeldItem(game)) { sourceQuestReward = false; sourceSlot = -1; reason = null; return true; }
+                return false;
+            }
+            finally { returning = false; }
+        }
+
         internal static int MapStorageSlot(int page, int slot, int length)
         {
             if (page < 0 || page >= 12 || slot < 0 || slot >= (length >= 432 ? 36 : 30)) return -1;
@@ -278,7 +423,12 @@ namespace ControllerSupport
             ObserveContext(game);
             if (!HasHeldItem(game)) { reason = null; return true; }
             if (MenuScript.player == null) { reason = "Player position is unavailable."; return false; }
-            return Drop(game, MenuScript.player.transform.position + new Vector3(0f, 3f, 0f), out reason);
+            float side = ControllerLookDirection.DropSide();
+            // i2/trig has world half-width 4; the player's capsule radius is .2.
+            // Native Burst can travel 4.8 units toward us before drifting. Ten
+            // units keeps even that outcome outside attraction (5.2 > 4.2),
+            // unlike an overhead drop that a ceiling can bounce back onto us.
+            return Drop(game, MenuScript.player.transform.position + new Vector3(side * 10f, 1.5f, 0f), out reason);
         }
 
         internal static bool LeaveRange(GameScript game, out string reason)
@@ -391,10 +541,10 @@ namespace ControllerSupport
             sourcePage = 0;
             scene = -1;
             interactionRoot = null;
-            sourceChipMenu = null;
+            sourceChipMenu = sourceGatherMenu = sourceModMenu = null;
             sourceCraftType = interactionCraftType = -1;
             interactionPosition = new Vector3();
-            sourceStorage = sourceCraft = sourceChip = returning = dropping = uncertainDrop = interactionCaptured = false;
+            sourceStorage = sourceCraft = sourceChip = sourceGather = sourceMod = sourceQuestReward = returning = dropping = uncertainDrop = interactionCaptured = false;
         }
     }
 }

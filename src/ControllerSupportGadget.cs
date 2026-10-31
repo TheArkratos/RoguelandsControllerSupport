@@ -33,10 +33,15 @@ namespace ControllerSupport
         protected override void Initialize()
         {
             probe = new InputProbe(Logger, bindings ?? BindingConfig.SafeDefaults());
-            ControllerInputOwnership.Configure(() => probe != null && probe.UsingController);
+            ControllerInputOwnership.Configure(() => probe != null && probe.UsingController, () =>
+            {
+                GameScript game = InstanceTracker.GameScript;
+                return game && game.menuStory && game.menuStory.activeInHierarchy;
+            });
             ControllerGameplayInput.Configure(probe.PollState, bindings ?? BindingConfig.SafeDefaults());
             ControllerDialogueInput.Configure(probe.PollState, bindings ?? BindingConfig.SafeDefaults());
             ControllerAim.Configure(probe.PollState);
+            ControllerLookDirection.Configure(probe.PollState);
             ControllerAimAssist.Trace = message => Logger.Log(message);
             ControllerAimAssist.StartSession();
             ControllerGameplayActions.Configure(probe.PollState,
@@ -48,7 +53,7 @@ namespace ControllerSupport
                 () => probe.UsingController);
             ControllerFrontEndMenus.Configure(probe.PollState,
                 bindings ?? BindingConfig.SafeDefaults(),
-                message => Logger.LogWarning(message, false));
+                message => Logger.LogWarning(message, false), ControllerGameplayInput.ConsumeInventoryInput);
             ControllerInteractPrompt.Configure((bindings ?? BindingConfig.SafeDefaults())["Interact"],
                 message => Logger.LogWarning(message, false));
             probeObject = new GameObject("Controller Support Input Probe");
@@ -65,6 +70,7 @@ namespace ControllerSupport
             ControllerGameplayActions.Reset();
             ControllerAimAssist.Reset();
             ControllerAim.Reset();
+            ControllerLookDirection.Reset();
             ControllerCombatGuide.Reset();
             ControllerExploration.Reset();
             ControllerMenuSelection.Reset();

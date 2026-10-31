@@ -54,6 +54,7 @@ namespace UnityEngine
 
     public class Transform
     {
+        public Vector3 eulerAngles;
         public Vector3 position;
     }
 
@@ -93,8 +94,10 @@ public static class ControllerCursor
     public static float staticX, staticY;
 }
 
+public class PlayerScript { public bool attacking; public UnityEngine.GameObject e; }
 public class GameScript
 {
+    public static int[] equippedIDs = new int[1];
     public UnityEngine.GameObject cursorTrasher,cursorEmblemForge,cursorPrism;
     public static bool combatMode = true, dead, pausing, buildMode, inventoryOpen, talking;
 }

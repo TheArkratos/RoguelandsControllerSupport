@@ -102,7 +102,10 @@ internal static class Program
         Check(!CraftingMenuContext.CanActivate(game, 137, 0, out reason), "mouse ownership cannot activate controller Alchemy actions");
         ControllerInputOwnership.Configure(() => true);
         game.SetType(2);
-        Check(!CraftingMenuContext.IsOpen(game), "deferred Ultimate Forge is not silently enabled");
+        Check(CraftingMenuContext.IsUltimate(game) && CraftingMenuContext.ModeIdentity(game) == 2,
+            "same-root Ultimate Forge switch has a distinct supported context");
+        Check(!CraftingMenuContext.CanActivate(game, 140, 0, out reason),
+            "Alchemy quick recipes cannot carry over into Ultimate read-only recipe display");
         Console.WriteLine(checks + " Alchemy context checks passed.");
     }
 }

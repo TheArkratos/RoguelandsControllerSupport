@@ -63,12 +63,12 @@ namespace ControllerSupport
                     || name.StartsWith("ShiftClick", StringComparison.Ordinal)
                     || name == "ForgeEmblem"
                     || name == "TrashItem"
-                    || name == "PrismItem"
+                    || name == "PrismItem" || name == "AddMod"
                     || name == "SelectCombatChip" || name == "PlaceCombatChip" || name == "SwapCombatChip";
                 ParameterInfo[] parameters = method.GetParameters();
                 if (mutation && parameters.Length == 1 && parameters[0].ParameterType == typeof(int))
                     yield return method;
-                else if ((name == "DropItem" || name == "CloseAllMenus" || name == "Craft" || name == "DropCraftItems") && parameters.Length == 0)
+                else if ((name == "DropItem" || name == "CloseAllMenus" || name == "Craft" || name == "DropCraftItems" || name == "DropModItems" || name == "Shuffle") && parameters.Length == 0)
                     yield return method;
             }
             // Older Unity/Mono iterators do not carry IteratorStateMachineAttribute.
@@ -109,7 +109,7 @@ namespace ControllerSupport
         {
             foreach (string name in new[] { "SelectItem", "SplitItem", "SwapItem",
                 "SelectItemStorage", "SplitItemStorage", "SwapItemStorage",
-                "SelectItemCraft", "SplitItemCraft", "SwapItemCraft" })
+                "SelectItemCraft", "SplitItemCraft", "SwapItemCraft", "SelectItemGather", "SelectItemMod", "SwapItemMod", "SelectItemQuest" })
                 yield return AccessTools.Method(typeof(GameScript), name, new[] { typeof(int) });
         }
 
@@ -132,7 +132,10 @@ namespace ControllerSupport
             if (held == null || held.id == 0 || held.q <= 0) return;
             if (!ReferenceEquals(held, __state.Before) || held.q != __state.Quantity)
             {
-                if (__originalMethod.Name.EndsWith("Craft")) InventoryItemLifecycle.RecordCraftSource(__instance, __0);
+                if (__originalMethod.Name == "SelectItemQuest") InventoryItemLifecycle.RecordQuestReward(__instance);
+                else if (__originalMethod.Name == "SelectItemGather") InventoryItemLifecycle.RecordGatherSource(__instance, __0);
+                else if (__originalMethod.Name.EndsWith("Mod")) InventoryItemLifecycle.RecordModSource(__instance, __0);
+                else if (__originalMethod.Name.EndsWith("Craft")) InventoryItemLifecycle.RecordCraftSource(__instance, __0);
                 else InventoryItemLifecycle.RecordSource(__instance, __0, __state.Page,
                     __originalMethod.Name.EndsWith("Storage"));
             }
@@ -148,6 +151,14 @@ namespace ControllerSupport
                 Postfix(__instance, __0, __originalMethod, __state);
             return __exception;
         }
+    }
+
+    [HarmonyPatch(typeof(GameScript), "Gather")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryGatherContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance) { InventoryItemLifecycle.ObserveContext(__instance); }
     }
 
     [HarmonyPatch(typeof(GameScript), "Storage")]
@@ -285,5 +296,27 @@ namespace ControllerSupport
         [HarmonyPostfix]
         private static void Postfix(GameScript __instance)
         { InventoryItemLifecycle.ObserveContext(__instance); }
+    }
+}
+
+namespace ControllerSupport
+{
+    [HarmonyPatch(typeof(GameScript), "NPCGearMod")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryGearModificationContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance) { InventoryItemLifecycle.ObserveContext(__instance); }
+    }
+}
+
+namespace ControllerSupport
+{
+    [HarmonyPatch(typeof(GameScript), "NPCQuest")]
+    [HarmonyGadget("Controller Support")]
+    public static class InventoryQuestContextPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(GameScript __instance) { InventoryItemLifecycle.ObserveContext(__instance); }
     }
 }

@@ -14,6 +14,7 @@ internal static class Program
     private static GameScript Fresh()
     {
         InventoryItemLifecycle.Reset();
+        ControllerLookDirection.Reset();
         InstallCapture(true);
         Network.Live.Clear(); Network.FailDestroy = false;
         GadgetCoreAPI.LastIsChip = false; GadgetCoreAPI.Drops = 0; GadgetCoreAPI.FailSpawn = GadgetCoreAPI.ThrowSpawn = false;
@@ -50,6 +51,160 @@ internal static class Program
                 && ((MethodInfo)output[3].operand).Name == "TrackSpawn", "both branches capture immediately after spawn");
         }
         return output;
+    }
+
+    private static void GearModificationLifecycle()
+    {
+        string reason;GameScript g=Fresh();g.NPCGearMod();
+        Item gear=new Item(500,1){extra="mod gear exact metadata"};g.modSlot[0]=gear;Action(g,"SelectItemMod",0);
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&ReferenceEquals(g.modSlot[0],gear)&&g.ModPlaces==1&&g.holdingItem.id==0,
+            "Gear Modification return uses native placement and original metadata reference");
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.ModPlaces==1,"repeated mod cancel cannot duplicate gear");
+        g=Fresh();g.NPCGearMod();g.modSlot[0]=new Item(500,1);g.holdingItem=new Item(501,1);Action(g,"SwapItemMod",0);Item held=g.holdingItem;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&ReferenceEquals(g.holdingItem,held)&&g.modSlot[0].id==501,
+            "occupied original mod source rejects return without swapping or overwriting either gear");
+        foreach(bool replacement in new[]{false,true})
+        {
+            g=Fresh();g.NPCGearMod();g.modSlot[0]=new Item(500,1);Action(g,"SelectItemMod",0);held=g.holdingItem;
+            if(replacement)g.menuGearMods=new GameObject{activeSelf=true};else g.menuGearMods.activeSelf=false;
+            Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&ReferenceEquals(g.holdingItem,held)&&g.modSlot[0].id==0,
+                "closed or replaced Gear Modification panel cannot receive old pickup provenance");
+        }
+        g=Fresh();g.NPCGearMod();g.modSlot[0]=new Item(500,1);Action(g,"SelectItemMod",0);g.ThrowRefresh=true;
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.modSlot[0].id==500&&g.holdingItem.id==0,
+            "mod placement committed before cosmetic failure cannot refund duplicate gear");
+        g=Fresh();g.NPCGearMod();g.modSlot[0]=new Item(500,1);Action(g,"SelectItemMod",0);g.RejectPlace=true;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.holdingItem.id==500&&g.modSlot[0].id==0,
+            "native mod placement rejection leaves held gear and UI available");
+    }
+
+    private static void QuestRewardLifecycle()
+    {
+        string reason;
+        GameScript g=Fresh();g.NPCQuest();Item reward=new Item(59,25){extra="quest metadata"};g.inventoryQuest[0]=reward;Action(g,"SelectItemQuest",0);
+        Check(g.QuestClaims==1&&g.QuestXp==1&&g.QuestGeneration==1,"native quest completion and generation occurs once before reward return");
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&ReferenceEquals(g.inventory[6],reward)&&g.inventoryQuest[0].id==0&&g.holdingItem.id==0,"claimed reward returns to backpack instead of replacement quest");
+        Check(g.QuestClaims==1&&g.QuestXp==1&&g.QuestGeneration==1,"safe reward stow does not replay quest reward XP or regeneration");
+        g=Fresh();g.NPCQuest();g.inventory[6]=new Item(59,9970){extra="same"};g.inventoryQuest[1]=new Item(59,25){extra="same"};Action(g,"SelectItemQuest",1);
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.inventory[6].q==9995&&g.inventory[7].id==0,"reward stow prefers compatible full-fit native stack");
+        g=Fresh();g.NPCQuest();for(int j=6;j<36;j++)g.inventory[j]=new Item(12,9999);g.inventoryQuest[2]=new Item(59,25){extra="full bag reward"};Action(g,"SelectItemQuest",2);reward=g.holdingItem;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&ReferenceEquals(reward,g.holdingItem)&&g.inventoryQuest[2].id==0,"full backpack preserves claimed reward and never returns to quest output");
+        Check(g.QuestClaims==1&&g.QuestXp==1&&g.QuestGeneration==1,"failed return leaves completed quest state committed once");
+        g.inventory[6]=new Item(59,9989){extra="full bag reward"};g.inventory[7]=new Item(59,9989){extra="full bag reward"};
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.inventory[6].q==9989&&g.inventory[7].q==9989&&ReferenceEquals(reward,g.holdingItem),"fragmented capacity rejection makes no partial reward mutation");
+        Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&g.holdingItem.id==0&&GadgetCoreAPI.LastDrop.q==25&&GadgetCoreAPI.LastDrop.extra=="full bag reward","claimed reward keeps shared metadata-safe RT drop");
+        g=Fresh();g.NPCQuest();g.inventory[3]=new Item(10,1);Action(g,"SelectItem",3);g.holdingItem=new Item(0,0);g.inventoryQuest[0]=new Item(59,3);Action(g,"SelectItemQuest",0);
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.inventory[3].id==0&&g.inventory[6].id==59,"quest claim clears stale source and cannot put reward in previous unrelated slot");
+        g=Fresh();g.NPCQuest();g.inventoryQuest[0]=new Item(59,2){extra="cosmetic"};Action(g,"SelectItemQuest",0);g.ThrowRefresh=true;
+        Check(InventoryItemLifecycle.TryReturn(g,out reason)&&g.inventory[6].q==2&&g.holdingItem.id==0&&g.QuestClaims==1,"cosmetic failure after reward placement never refunds or reclaims");
+        g=Fresh();g.NPCQuest();g.inventoryQuest[0]=new Item(59,2);Action(g,"SelectItemQuest",0);g.RejectPlace=true;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason)&&g.holdingItem.q==2&&g.inventory[6].id==0,"native rejected reward placement preserves entire held item");
+    }
+
+    private static void GatherLifecycle()
+    {
+        string reason;
+        GameScript g = Fresh(); g.Gather();
+        Item original = new Item(17, 23) { extra = "gather full metadata" };
+        g.gatherStorage[8] = original;
+        Action(g, "SelectItemGather", 8);
+        Check(ReferenceEquals(g.holdingItem, original) && g.gatherStorage[8].id == 0,
+            "native gather pickup moves the exact source item to hand");
+        Check(InventoryItemLifecycle.TryReturn(g, out reason) && ReferenceEquals(g.gatherStorage[8], original)
+            && g.gatherStorage[8].q == 23 && g.gatherStorage[8].extra == "gather full metadata" && g.holdingItem.id == 0,
+            "gather cancellation restores original reference/quantity/metadata to its exact ninth slot");
+        Check(g.GatherRefreshes == 2 && g.inventory[8].id == 0 && g.storage[8].id == 0,
+            "gather return refreshes native gather artwork without touching inventory or storage");
+        Check(InventoryItemLifecycle.TryReturn(g, out reason) && g.gatherStorage[8].q == 23,
+            "empty hand repeated cancel cannot duplicate gathered output");
+        foreach (int slot in new[] { 0, 4, 8 })
+        {
+            g = Fresh(); g.Gather(); g.gatherStorage[slot] = new Item(18, 7) { extra = "compatible" };
+            Action(g, "SelectItemGather", slot); g.gatherStorage[slot] = new Item(18, 2) { extra = "compatible" };
+            Item target = g.gatherStorage[slot];
+            Check(InventoryItemLifecycle.TryReturn(g, out reason) && ReferenceEquals(target, g.gatherStorage[slot])
+                && target.q == 9 && target.extra == "compatible" && g.holdingItem.id == 0,
+                "gather regeneration merges only the whole compatible held stack into original slot " + slot);
+        }
+        foreach (Item conflict in new[] { new Item(19, 1) { extra = "other item" },
+            new Item(18, 1) { extra = "other metadata" }, new Item(18, 9994) { extra = "same" } })
+        {
+            g = Fresh(); g.Gather(); g.gatherStorage[3] = new Item(18, 7) { extra = "same" };
+            Action(g, "SelectItemGather", 3); Item held = g.holdingItem;
+            g.gatherStorage[3] = conflict; int before = conflict.q;
+            Check(!InventoryItemLifecycle.TryReturn(g, out reason) && ReferenceEquals(g.holdingItem, held)
+                && held.q == 7 && ReferenceEquals(g.gatherStorage[3], conflict) && conflict.q == before,
+                "conflicting/full regenerated gather source preserves both real items");
+        }
+        g = Fresh(); g.Gather(); g.gatherStorage[2] = new Item(18, 7) { extra = "safe" };
+        Action(g, "SelectItemGather", 2); g.gatherStorage[2] = g.holdingItem;
+        Check(!InventoryItemLifecycle.TryReturn(g, out reason) && g.holdingItem.q == 7,
+            "aliased gather source cannot self-merge and duplicate quantity");
+        foreach (bool replacement in new[] { false, true })
+        {
+            g = Fresh(); g.Gather(); g.gatherStorage[5] = new Item(21, 4); Action(g, "SelectItemGather", 5);
+            if (replacement) g.menuGather = new GameObject { activeSelf = true }; else g.menuGather.activeSelf = false;
+            Item held = g.holdingItem;
+            Check(!InventoryItemLifecycle.TryReturn(g, out reason) && ReferenceEquals(g.holdingItem, held)
+                && g.gatherStorage[5].id == 0, "closed/replaced gather panel cannot reuse old pickup provenance");
+        }
+        g = Fresh(); g.Gather(); g.gatherStorage[1] = new Item(22, 6); Action(g, "SelectItemGather", 1);
+        g.ThrowGatherRefresh = g.ThrowRefresh = true;
+        Check(InventoryItemLifecycle.TryReturn(g, out reason) && g.gatherStorage[1].q == 6 && g.holdingItem.id == 0,
+            "gather cosmetic failure after commit cannot refund a duplicate held item");
+        g = Fresh(); g.Gather(); g.gatherStorage[0] = new Item(23, 9); Action(g, "SelectItemGather", 0);
+        PlayerScript.curInteractObj = null;
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && g.gatherStorage[0].q == 9 && GadgetCoreAPI.Drops == 0,
+            "walk-away returns a known gather pickup without dropping when source fits");
+        g = Fresh(); g.Gather(); PlayerScript.curInteractObj.transform.position = new Vector3(330, 150, 0);
+        Type opener = typeof(InventoryItemLifecycle).Assembly.GetType("ControllerSupport.InventoryGatherContextPatch");
+        Check(opener != null && opener.IsPublic, "Gather opener patch exported for GadgetCore");
+        opener.GetMethod("Postfix", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { g });
+        g.gatherStorage[1] = new Item(24, 3); Action(g, "SelectItemGather", 1);
+        g.gatherStorage[1] = new Item(25, 1); PlayerScript.curInteractObj = null;
+        Check(InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.LastPosition.x == 330
+            && GadgetCoreAPI.LastPosition.y == 151.5f && GadgetCoreAPI.LastDrop.id == 24
+            && g.gatherStorage[1].id == 25 && g.holdingItem.id == 0,
+            "full gather source falls back to safe native drop at captured ship-droid opener");
+        g = Fresh(); g.Gather(); g.gatherStorage[0] = new Item(26, 2); Action(g, "SelectItemGather", 0);
+        GadgetCoreAPI.ThrowSpawn = true; Network.FailDestroy = true;
+        Check(!InventoryItemLifecycle.TryDropAbovePlayer(g, out reason) && !Guard(g),
+            "gather pickup retains existing uncertain-drop quarantine");
+        Check(!InventoryItemLifecycle.TryReturn(g, out reason) && g.gatherStorage[0].id == 0 && g.holdingItem.q == 2,
+            "quarantined gather item cannot be returned while real drop outcome is uncertain");
+        var guardTargets = ((IEnumerable<MethodBase>)typeof(InventoryMutationGuardPatch)
+            .GetMethod("TargetMethods", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null)).Select(x => x.Name).ToList();
+        Check(guardTargets.Contains("SelectItemGather") && guardTargets.Contains("ShiftClickGather"),
+            "existing mutation guard covers native gather pickup and transfer");
+        var sourceTargets = ((IEnumerable<MethodBase>)typeof(InventorySourcePatch)
+            .GetMethod("TargetMethods", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null)).Select(x => x.Name).ToList();
+        Check(sourceTargets.Contains("SelectItemGather"), "native mouse/controller gather pickups share source tracking");
+        g = Fresh(); g.Gather(); g.gatherStorage[7] = new Item(28, 5) { extra = "exception pickup" };
+        var sourcePrefix = typeof(InventorySourcePatch).GetMethod("Prefix", BindingFlags.Static | BindingFlags.NonPublic);
+        var sourceFinalizer = typeof(InventorySourcePatch).GetMethod("Finalizer", BindingFlags.Static | BindingFlags.NonPublic);
+        object[] capture = { g, null }; sourcePrefix.Invoke(null, capture);
+        g.ThrowGatherRefresh = true;
+        Exception failure = null;
+        try { g.SelectItemGather(7); } catch (Exception error) { failure = error; }
+        Check(failure != null && ReferenceEquals(sourceFinalizer.Invoke(null,
+            new object[] { g, 7, typeof(GameScript).GetMethod("SelectItemGather"), capture[1], failure }), failure),
+            "native gather cosmetic exception is propagated while finalizer records moved item's provenance");
+        g.ThrowGatherRefresh = false;
+        Check(InventoryItemLifecycle.TryReturn(g, out reason) && g.gatherStorage[7].q == 5
+            && g.gatherStorage[7].extra == "exception pickup" && g.holdingItem.id == 0,
+            "pickup refresh failure cannot strand the real gather item without source tracking");
+        g = Fresh(); g.Gather(); g.gatherStorage[0] = new Item(28, 2); Action(g, "SelectItemGather", 0);
+        Application.loadedLevel++;
+        Check(!InventoryItemLifecycle.TryReturn(g, out reason) && g.holdingItem.q == 2 && g.gatherStorage[0].id == 0,
+            "gather source cannot cross a scene change");
+        g = Fresh(); g.Gather(); g.holdingItem = new Item(28, 2);
+        InventoryItemLifecycle.RecordGatherSource(g, 9);
+        Check(!InventoryItemLifecycle.TryReturn(g, out reason) && g.holdingItem.q == 2,
+            "gather provenance fails closed outside native nine-output range");
+        g = Fresh(); g.Gather(); g.gatherStorage[6] = new Item(27, 4); Action(g, "SelectItemGather", 6);
+        g.PlaceItem(10); g.inventory[10].q = 4; Action(g, "SelectItem", 10);
+        Check(InventoryItemLifecycle.TryReturn(g, out reason) && g.inventory[10].q == 4 && g.gatherStorage[6].id == 0,
+            "ordinary inventory pickup replaces gather provenance after placing gathered material");
     }
 
     private static bool Guard(GameScript game)
@@ -217,7 +372,7 @@ internal static class Program
         g=Fresh();g.CombatChipMenu();InventoryItemLifecycle.ObserveContext(g);g.holdingItem=new Item(19,0);g.holdingCombatChip=true;
         Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&GadgetCoreAPI.LastIsChip&&GadgetCoreAPI.LastDrop.id==19&&GadgetCoreAPI.LastDrop.q==0,
             "above-head q0 chip drop uses special native chip branch without inventing quantity");
-        Check(GadgetCoreAPI.LastPosition.x==5&&GadgetCoreAPI.LastPosition.y==11&&g.holdingItem.id==0&&!g.holdingCombatChip,
+        Check(GadgetCoreAPI.LastPosition.x==15&&GadgetCoreAPI.LastPosition.y==9.5f&&g.holdingItem.id==0&&!g.holdingCombatChip,
             "successful chip drop clears both native held fields only after confirmed spawn");
         Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason)&&GadgetCoreAPI.Drops==1,
             "repeated chip drop cannot duplicate a pickup");
@@ -260,8 +415,87 @@ internal static class Program
             "native exiting-combat rejection does not invent chip provenance");
     }
 
+    private static bool NativeAttractionOverlaps(Vector3 item, Vector3 player)
+    {
+        // Verified resources.assets i2/trig: unit trigger box * child scale4
+        // * root scale2 = half extents4. Player capsule radius.2, halfheight.75.
+        return Math.Abs(item.x-player.x) <= 4f+.2f && Math.Abs(item.y-player.y) <= 4f+.75f;
+    }
+
+    private static void RememberedFacingDropIntegration()
+    {
+        foreach(short walking in new[]{short.MinValue,short.MaxValue})
+        {
+            GameScript g=Fresh(); string reason; bool owned=true;
+            ControllerInputOwnership.Configure(()=>owned);
+            var pad=new JoystickInputState();pad.Connect();
+            var sprite=new GameObject();sprite.transform.eulerAngles=new Vector3(0,180,0);
+            MenuScript.player.Component=new PlayerScript{e=sprite};
+            ControllerLookDirection.Configure(()=>pad); GameScript.combatMode=false;GameScript.inventoryOpen=false;
+            pad.Apply(new RawJoystickEvent{Type=2,Number=0,Value=walking});
+            // Replay native PlayerScript's two facing read branches. Both
+            // adapters must choose the same walking side before yaw is written.
+            float nativeX=ControllerFacing.CursorX();
+            Check((nativeX>MenuScript.player.transform.position.x)==(walking>0),"gameplay walking sets native facing adapter");
+            Check((Camera.main.ScreenToWorldPoint(ControllerFacing.MousePosition()).x>MenuScript.player.transform.position.x)==(walking>0),"mouse branch agrees with remembered walking side");
+            sprite.transform.eulerAngles=new Vector3(0,nativeX>MenuScript.player.transform.position.x?180:0,0);
+            GameScript.inventoryOpen=true;
+            foreach(short menuStick in new[]{(short)0,short.MinValue,short.MaxValue})
+            {
+                pad.Apply(new RawJoystickEvent{Type=2,Number=0,Value=menuStick});
+                pad.Apply(new RawJoystickEvent{Type=2,Number=3,Value=(short)-walking});
+                Check((ControllerFacing.CursorX()>MenuScript.player.transform.position.x)==(walking>0),"inventory left/right navigation cannot redirect native visual facing");
+                sprite.transform.eulerAngles=new Vector3(0,walking<0?180:0,0); // stale sprite field cannot replace authoritative walking memory
+                g.holdingItem=new Item(20,3){extra="remembered side"};
+                Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason),"remembered walking side drops through production transaction");
+                Check((GadgetCoreAPI.LastPosition.x>MenuScript.player.transform.position.x)==(walking>0),"walk then neutral/menu navigation drops on same facing side");
+                Check(GadgetCoreAPI.LastDrop.extra=="remembered side"&&GadgetCoreAPI.LastDrop.q==3,"remembered-side drop conserves metadata and quantity");
+            }
+            owned=false;ControllerFacing.CursorX();owned=true;
+        }
+        GameScript.inventoryOpen=true;ControllerLookDirection.Reset();ControllerInputOwnership.Configure(()=>true);
+    }
+
+    private static void ExplicitDropDistance()
+    {
+        foreach (float yaw in new[] { 0f, 180f, float.NaN, float.PositiveInfinity })
+        {
+            GameScript g=Fresh(); string reason;
+            var sprite=new GameObject(); sprite.transform.eulerAngles=new Vector3(0,yaw,0);
+            MenuScript.player.Component=new PlayerScript { e=sprite };
+            g.holdingItem=new Item(20,8) { extra="distance" };
+            Check(InventoryItemLifecycle.TryDropAbovePlayer(g,out reason),"distance test drops full held stack");
+            Vector3 player=MenuScript.player.transform.position, dropped=GadgetCoreAPI.LastPosition;
+            Check(!NativeAttractionOverlaps(dropped,player),"explicit drop starts outside native item attraction trigger");
+            float direction=yaw==0f ? -1f : 1f;
+            Check((dropped.x-player.x)*direction>0,"drop follows native sprite facing or safe rightward fallback");
+            // The strongest inward Burst translates24 units/sec for.2s. Normal
+            // post-burst drift can add another.2 inward before ChangeLayer(.4s).
+            Vector3 afterBurst=new Vector3(dropped.x-direction*(24f*.2f+.5f*.4f),dropped.y+4f*.2f,0);
+            Check(!NativeAttractionOverlaps(afterBurst,player),"maximum inward burst stays outside native attraction trigger");
+            Check(g.holdingItem.id==0 && GadgetCoreAPI.LastDrop.q==8 && GadgetCoreAPI.LastDrop.extra=="distance" && Network.Live.Count==1,
+                "distance change preserves metadata full quantity and single confirmed network spawn");
+        }
+    }
+
+    private static void UltimateForgeLifecycle()
+    {
+        GameScript g=Fresh(); g.GearForge(); g.craftType=2; string reason;
+        g.craft[0]=new Item(301,1) { extra="ultimate ingredient" };
+        Action(g,"SelectItemCraft",0);
+        Check(InventoryItemLifecycle.TryReturn(g,out reason) && g.craft[0].id==301 && g.craft[0].extra=="ultimate ingredient" && g.holdingItem.id==0,
+            "Ultimate Forge shares exact crafting source return with metadata");
+        Action(g,"SelectItemCraft",0); g.craftType=0;
+        Check(!InventoryItemLifecycle.TryReturn(g,out reason) && g.holdingItem.id==301 && g.craft[0].id==0,
+            "Ultimate Forge held source cannot be reinterpreted as Gear Forge input");
+    }
+
     public static void Main()
     {
+        GearModificationLifecycle();
+        RememberedFacingDropIntegration();
+        ExplicitDropDistance();
+        UltimateForgeLifecycle();
         ChipLifecycle();
         GearForgeLifecycle();
         AlchemyLifecycle();
@@ -349,7 +583,7 @@ internal static class Program
 
         g = Fresh(); g.holdingItem = new Item(20, 8) { extra = "drop" };
         Check(InventoryItemLifecycle.TryDropAbovePlayer(g, out reason), "explicit drop succeeds");
-        Check(GadgetCoreAPI.LastPosition.x == 5 && GadgetCoreAPI.LastPosition.y == 11 && GadgetCoreAPI.LastDrop.extra == "drop", "drop above player with metadata");
+        Check(GadgetCoreAPI.LastPosition.x == 15 && GadgetCoreAPI.LastPosition.y == 9.5f && GadgetCoreAPI.LastDrop.extra == "drop", "drop away from player with metadata");
         InventoryItemLifecycle.TryDropAbovePlayer(g, out reason);
         Check(GadgetCoreAPI.Drops == 1 && g.holdingItem.id == 0, "repeated drop cannot duplicate");
 
@@ -575,6 +809,8 @@ internal static class Program
         PlayerScript.curInteractObj = null; Application.loadedLevel++;
         Check(!InventoryItemLifecycle.LeaveRange(g, out reason) && GadgetCoreAPI.Drops == 0,
             "Prism cached position cannot cross scene transition");
+        GatherLifecycle();
+        QuestRewardLifecycle();
         Console.WriteLine("Inventory lifecycle: " + checks + " checks passed.");
     }
 }

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><RequiresRoguelandsReference>true</RequiresRoguelandsReference><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems><DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads><NuGetAudit>false</NuGetAudit><NoWarn>$(NoWarn);CS0649</NoWarn></PropertyGroup>
+ <ItemGroup>
+  <Compile Include="../../src/ControllerFrontEndMenus.cs" Link="ControllerFrontEndMenus.cs" />
+  <Compile Include="../../src/SelectionCornerStyle.cs" Link="SelectionCornerStyle.cs" />
+  <Compile Include="../../src/BindingConfig.cs" Link="BindingConfig.cs" />
+  <Compile Include="../../src/JoystickInputState.cs" Link="JoystickInputState.cs" />
+  <Compile Include="../../src/RawJoystickEvent.cs" Link="RawJoystickEvent.cs" />
+  <Compile Include="$(RoguelandsReferenceDir)/Assembly-CSharp/ButtonMenu.cs" Link="NativeButtonMenu.cs" />
+  <Compile Include="../front_end_navigation_repro/Stubs.cs" Link="Stubs.cs" />
+  <Compile Include="Program.cs" />
+ </ItemGroup>
+</Project>

@@ -176,6 +176,59 @@ namespace ControllerSupport
         }
     }
 
+    // Valflame summons periodically while equipped, outside attack lifetimes.
+    // Keep native spawn direction/RPCs; only choose each summon position live.
+    [HarmonyPatch(typeof(PlayerScript),"ValflameProj"),HarmonyGadget("Controller Support")]
+    public static class AimAssistValflamePatch
+    {
+        private sealed class Scope
+        {
+            internal PlayerScript Owner;
+            internal ControllerAimAssist.Attack Placement;
+            internal Vector3 Point;
+            internal bool Ready;
+        }
+        private static Scope scope;
+        [HarmonyPrefix]
+        private static void Prefix(PlayerScript __instance,out object __state)
+        { __state=scope; scope=new Scope { Owner=ControllerAimAssist.Local(__instance)?__instance:null }; }
+        [HarmonyFinalizer]
+        private static Exception Finalizer(Exception __exception,object __state)
+        { scope=__state as Scope; return __exception; }
+        internal static Vector3 MousePosition()
+        {
+            if(scope==null) return Input.mousePosition;
+            scope.Ready=ControllerAimAssist.TryValflamePoint(scope.Owner,out scope.Point,out scope.Placement);
+            return scope.Ready?Camera.main.WorldToScreenPoint(scope.Point):Input.mousePosition;
+        }
+        internal static UnityEngine.Object Capture(UnityEngine.Object spawned)
+        {
+            GameObject obj=spawned as GameObject;
+            Projectile projectile=obj?obj.GetComponent<Projectile>():null;
+            if(projectile && scope!=null && scope.Ready)
+                ControllerAimAssist.CaptureValflame(projectile,scope.Placement,scope.Point);
+            return spawned;
+        }
+        [HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var source=new List<CodeInstruction>(instructions);
+            MethodInfo instantiate=AccessTools.Method(typeof(UnityEngine.Object),"Instantiate",
+                new[]{typeof(UnityEngine.Object),typeof(Vector3),typeof(Quaternion)});
+            int count=0;foreach(CodeInstruction i in source) if(Equals(i.operand,instantiate)) count++;
+            if(instantiate==null || count!=1)
+            { Debug.LogWarning("Controller Support: Valflame spawn pattern mismatch; target marker correlation disabled."); return source; }
+            var result=new List<CodeInstruction>();
+            foreach(CodeInstruction i in source)
+            {
+                result.Add(new CodeInstruction(i));
+                if(Equals(i.operand,instantiate)) result.Add(new CodeInstruction(OpCodes.Call,
+                    AccessTools.Method(typeof(AimAssistValflamePatch),"Capture")));
+            }
+            return result;
+        }
+    }
+
     [HarmonyPatch(typeof(GameScript),"ActivateCombatChip"),HarmonyGadget("Controller Support")]
     public static class AimAssistSkillPatch
     {
@@ -201,7 +254,7 @@ namespace ControllerSupport
             if(count!=2) return code;
             var result=new List<CodeInstruction>();
             foreach(CodeInstruction i in code)
-            { var copy=new CodeInstruction(i); if(Equals(copy.operand,mouse)) copy.operand=AccessTools.Method(typeof(ControllerAim),"AttackMousePosition"); result.Add(copy); }
+            { var copy=new CodeInstruction(i); if(Equals(copy.operand,mouse)) copy.operand=AccessTools.Method(typeof(ControllerAtalantaPlacement),"MousePosition"); result.Add(copy); }
             return result;
         }
     }

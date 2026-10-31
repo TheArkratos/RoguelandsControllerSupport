@@ -33,7 +33,7 @@ namespace ControllerSupport
         private static SelectionCornerRenderer renderer;
         private static readonly Func<Bounds?> HeldBadgeProvider = CurrentHeldBadgeBounds;
         private static bool rendererIsPage, assetFailed, updateFailed;
-        private static GameScript preparedGame, selectionGame;
+        private static GameScript preparedGame, selectionGame, questSafetyGame;
         private static int preparedFrame = -1;
         private static bool storageClick;
         private static bool ownershipSuspended;
@@ -44,7 +44,7 @@ namespace ControllerSupport
         private static GameObject auxiliaryPane;
         private static bool portalContext, conversionModeContext;
         private static int craftingModeContext = -1;
-        private static GameObject chipRootContext;
+        private static GameObject chipRootContext, shipDroidRootContext, gearModificationRootContext, questRootContext;
         private static readonly FieldInfo NativeHoverField = Field("hoverItem");
         private static GameScript hoverGame;
         private static Collider hoverCollider;
@@ -77,7 +77,7 @@ namespace ControllerSupport
 
         internal static bool InventoryOpen(GameScript game)
         {
-            return game != null && !GameScript.pausing && !GameScript.dead && !GameScript.buildMode &&
+            return !ControllerInputOwnership.GameplayBlocked && game != null && !GameScript.pausing && !GameScript.dead && !GameScript.buildMode &&
                 GameScript.inventoryOpen && (CombatChipMenuContext.IsOpen(game) ||
                 (game.inventoryMain && game.inventoryMain.activeInHierarchy));
         }
@@ -90,12 +90,17 @@ namespace ControllerSupport
 
         internal static void Prepare(GameScript game)
         {
+            // Quarantine survives mouse handoff; physical quest delivery is inline native code.
+            questSafetyGame = game;
             InventoryNativeCursor.Update(game);
             if (!OwnershipActive()) return;
             if (stateProvider == null || updateFailed || bindings == null) return;
             int nextCraftingMode = CraftingMenuContext.ModeIdentity(game);
             GameObject nextChipRoot = CombatChipMenuContext.Root(game);
-            if (preparedGame == game && preparedFrame == Time.frameCount && craftingModeContext == nextCraftingMode && chipRootContext == nextChipRoot) return;
+            GameObject nextShipDroidRoot = ShipDroidMenuContext.Root(game);
+            GameObject nextGearModificationRoot = GearModificationMenuContext.Root(game);
+            GameObject nextQuestRoot = QuestMenuContext.Root(game);
+            if (preparedGame == game && preparedFrame == Time.frameCount && craftingModeContext == nextCraftingMode && chipRootContext == nextChipRoot && shipDroidRootContext == nextShipDroidRoot && gearModificationRootContext == nextGearModificationRoot && questRootContext == nextQuestRoot) return;
             EndNativeUpdate(); preparedGame = game; preparedFrame = Time.frameCount;
             try
             {
@@ -108,15 +113,18 @@ namespace ControllerSupport
                 if (pane == null && ItemConversionContext.IsOpen(game)) pane = ItemConversionContext.Root(game);
                 if (pane == null) pane = CraftingMenuContext.Root(game);
                 if (pane == null) pane = nextChipRoot;
+                if (pane == null) pane = nextShipDroidRoot;
+                if (pane == null) pane = nextGearModificationRoot;
+                if (pane == null) pane = nextQuestRoot;
                 bool conversionMode = ItemConversionContext.ModeActive(game);
-                bool newlyOpen = ownershipSuspended || selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || conversionModeContext != conversionMode || craftingModeContext != nextCraftingMode || chipRootContext != nextChipRoot;
-                if (craftingModeContext != nextCraftingMode || chipRootContext != nextChipRoot)
+                bool newlyOpen = ownershipSuspended || selectionGame != game || !open || portalContext != portal || auxiliaryPane != pane || conversionModeContext != conversionMode || craftingModeContext != nextCraftingMode || chipRootContext != nextChipRoot || shipDroidRootContext != nextShipDroidRoot || gearModificationRootContext != nextGearModificationRoot || questRootContext != nextQuestRoot;
+                if (craftingModeContext != nextCraftingMode || chipRootContext != nextChipRoot || shipDroidRootContext != nextShipDroidRoot || gearModificationRootContext != nextGearModificationRoot || questRootContext != nextQuestRoot)
                 {
                     repeating = false; repeatBlocked = true; repeatTarget = null;
                     actionFrame = nativeErrorFrame = -1;
                 }
                 craftingModeContext = nextCraftingMode;
-                chipRootContext = nextChipRoot;
+                chipRootContext = nextChipRoot; shipDroidRootContext = nextShipDroidRoot; gearModificationRootContext = nextGearModificationRoot; questRootContext = nextQuestRoot;
                 ownershipSuspended = false;
                 conversionModeContext = conversionMode;
                 portalContext = portal; auxiliaryPane = pane;
@@ -219,8 +227,8 @@ namespace ControllerSupport
                     else InventoryFeedback.Reject(reason);
                     return;
                 }
-                // In storage the physical bumpers own paging before any mapped
-                // item/close action. In particular RB must never drop a held stack.
+                // Physical bumpers own storage pages before mapped actions.
+                // Drop uses its configurable non-bumper binding (RT by default).
                 if (storage && bumperActive)
                 {
                     controllerOwnsSelection = true;
@@ -258,12 +266,17 @@ namespace ControllerSupport
                     { Reject(game, reason); return; }
                     repeating = false;
                     if (pressed[4] && hadItem) return;
+                    if (GearModificationMenuContext.IsOpen(game) && HasItem(GearModificationMenuContext.ReadTarget(game, GearModificationMenuContext.ItemSlot)))
+                    { Reject(game, "Take the gear out before closing Gear Modification"); return; }
                     game.CloseAllMenus();
                     if (pressed[6]) game.PauseMenu();
                     return;
                 }
                 if (pressed[3])
                 {
+                    if (!CombatChipMenuContext.HasHeldItem(game)) return;
+                    if (!pagingView || !pagingView.isMine)
+                    { Reject(game, "Local player is unavailable"); return; }
                     controllerOwnsSelection = true;
                     string reason;
                     if (!InventoryItemLifecycle.TryDropAbovePlayer(game, out reason)) Reject(game, reason);
@@ -272,6 +285,49 @@ namespace ControllerSupport
                 }
                 Collider candidate = navigator.SelectedCollider;
                 int index = navigator.SelectedSlot;
+                if (navigator.SelectedIsShipDroid)
+                {
+                    repeating = false; repeatBlocked = true;
+                    if (!pressed[0] && !pressed[1] && !pressed[2]) return;
+                    int action = pressed[2] ? 2 : pressed[1] ? 1 : 0;
+                    string reason;
+                    if (!ShipDroidMenuContext.CanActivate(game, index, action, out reason))
+                    { Reject(game, reason); return; }
+                    if (!ValidateRay(candidate)) return;
+                    controllerOwnsSelection = true;
+                    if (action == 2) ShipDroidMenuContext.TransferItem(game, index);
+                    else { storageClick = true; virtualButton = action; clickCollider = candidate; }
+                    return;
+                }
+                if (navigator.SelectedIsQuest)
+                {
+                    repeating = false; repeatBlocked = true;
+                    if (!pressed[0] && !pressed[1] && !pressed[2]) return;
+                    string reason;
+                    int action = pressed[2] ? 2 : pressed[1] ? 1 : 0;
+                    if (!QuestMenuContext.CanActivate(game, index, action, out reason)) { Reject(game, reason); return; }
+                    if (!ValidateRay(candidate)) return;
+                    controllerOwnsSelection = true;
+                    storageClick = true; virtualButton = 0; clickCollider = candidate;
+                    return;
+                }
+                if (navigator.SelectedIsGearModification)
+                {
+                    repeating = false; repeatBlocked = true;
+                    if (!pressed[0] && !pressed[1] && !pressed[2]) return;
+                    int action = pressed[2] ? 2 : pressed[1] ? 1 : 0;
+                    string reason;
+                    if (!GearModificationMenuContext.CanActivate(game, index, action, out reason))
+                    { Reject(game, reason); return; }
+                    if (!ValidateRay(candidate)) return;
+                    controllerOwnsSelection = true;
+                    // The loader custom-item postfix reads physical mouse input.
+                    // Use its same native methods for validated custom gear.
+                    if (GearModificationMenuContext.NeedsLoaderDispatch(game,index))
+                        GearModificationMenuContext.DispatchLoaderItem(game);
+                    else { storageClick = true; virtualButton = 0; clickCollider = candidate; }
+                    return;
+                }
                 if (navigator.SelectedIsChip)
                 {
                     repeating = false; repeatBlocked = true;
@@ -490,7 +546,7 @@ namespace ControllerSupport
                 }
                 if (renderer != null && !renderer.IsAlive)
                 { renderer.Dispose(); renderer = null; assetFailed = false; }
-                bool page = navigator.SelectedIsStoragePage || navigator.SelectedIsStorageUpgrade || navigator.SelectedIsPortal || navigator.SelectedIsConversionToggle || navigator.SelectedIsCraftingControl;
+                bool page = navigator.SelectedIsStoragePage || navigator.SelectedIsStorageUpgrade || navigator.SelectedIsPortal || navigator.SelectedIsConversionToggle || navigator.SelectedIsCraftingControl || navigator.SelectedIsShipDroidUpgrade || navigator.SelectedIsGearModificationControl || navigator.SelectedIsQuestControl;
                 if (renderer != null && rendererIsPage != page)
                 { renderer.Dispose(); renderer = null; }
                 if (renderer == null && !assetFailed)
@@ -565,6 +621,20 @@ namespace ControllerSupport
                 if (PortalMenuContext.CanActivate(game, slot, out reason)) primary = PortalMenuContext.ActionLabel(slot);
                 return;
             }
+            if (ShipDroidMenuContext.IsTarget(slot))
+            {
+                primary = ShipDroidMenuContext.ActionLabel(game, slot);
+                secondary = ShipDroidMenuContext.SecondaryLabel(game, slot);
+                return;
+            }
+            if (QuestMenuContext.IsTarget(slot))
+            { primary = QuestMenuContext.ActionLabel(game, slot); return; }
+            if (GearModificationMenuContext.IsTarget(slot))
+            {
+                primary = GearModificationMenuContext.ActionLabel(game, slot);
+                secondary = GearModificationMenuContext.SecondaryLabel(game, slot);
+                return;
+            }
             if (CombatChipMenuContext.IsTarget(slot))
             { primary = CombatChipMenuContext.ActionLabel(game,slot); return; }
             if (CraftingMenuContext.IsTarget(slot))
@@ -615,6 +685,9 @@ namespace ControllerSupport
         { return ReadTargetAt(game, index, index >= 51 && index <= 86, InventoryItemLifecycle.CurrentPage(game)); }
         private static Item ReadTargetAt(GameScript game, int index, bool storage, int page)
         {
+            if (GearModificationMenuContext.IsItemSlot(index)) return GearModificationMenuContext.ReadTarget(game, index);
+            if (QuestMenuContext.IsItemSlot(index)) return QuestMenuContext.ReadTarget(game, index);
+            if (ShipDroidMenuContext.IsItemSlot(index)) return ShipDroidMenuContext.ReadTarget(game, index);
             if (CraftingMenuContext.IsItemSlot(index)) return CraftingMenuContext.ReadTarget(game, index);
             FieldInfo field = storage ? StorageField : InventoryField;
             Item[] items = game != null && field != null ? field.GetValue(game) as Item[] : null;
@@ -628,6 +701,7 @@ namespace ControllerSupport
         private static bool CanOfferTransfer(GameScript game, int index, Item item)
         {
             if (!HasItem(item)) return false;
+            if (ShipDroidMenuContext.IsItemSlot(index)) return ShipDroidMenuContext.CanTransfer(game, index);
             if (CraftingMenuContext.IsItemSlot(index)) return CraftingMenuContext.CanTransfer(game, index);
             if (index >= 51 && index <= 86) return StorageOpen(game);
             if (CraftingMenuContext.IsOpen(game))
@@ -719,7 +793,7 @@ namespace ControllerSupport
         private static void RefreshCraftingMode()
         {
             if (preparedGame != null && (craftingModeContext != CraftingMenuContext.ModeIdentity(preparedGame) ||
-                chipRootContext != CombatChipMenuContext.Root(preparedGame)))
+                chipRootContext != CombatChipMenuContext.Root(preparedGame) || shipDroidRootContext != ShipDroidMenuContext.Root(preparedGame) || gearModificationRootContext != GearModificationMenuContext.Root(preparedGame) || questRootContext != QuestMenuContext.Root(preparedGame)))
                 Prepare(preparedGame);
         }
         internal static Vector3 VirtualMousePosition()
@@ -732,8 +806,11 @@ namespace ControllerSupport
                 return Camera.main.WorldToScreenPoint(selected.bounds.center);
             return Input.mousePosition;
         }
+        internal static bool QuestMouseInputBlocked(int button)
+        { return button == 0 && QuestMenuContext.PhysicalMutationBlocked(questSafetyGame); }
         internal static bool VirtualMouseButtonDown(int button)
         {
+            if (QuestMouseInputBlocked(button)) return false;
             bool active = OwnershipActive();
             if (active) RefreshCraftingMode();
             return Input.GetMouseButtonDown(button) || (active && storageClick && button == virtualButton && clickCollider &&
@@ -805,7 +882,7 @@ namespace ControllerSupport
         {
             EndNativeUpdate(); RestoreNativeHeldVisual(); InventoryNativeCursor.Reset();
             stateProvider=null; usingControllerProvider=null; bindings=null; logWarning=null;
-            preparedGame=selectionGame=null; preparedFrame=-1; Array.Clear(armed,0,armed.Length);
+            preparedGame=selectionGame=questSafetyGame=null; preparedFrame=-1; Array.Clear(armed,0,armed.Length);
             Array.Clear(pagingArmed,0,pagingArmed.Length);
             Array.Clear(recipePagingArmed,0,recipePagingArmed.Length); pagingPlayer=null; pagingScene=-1;
             craftingModeContext=-1;
@@ -813,7 +890,7 @@ namespace ControllerSupport
             hoverGame=null; hoverCollider=null; hoverControllerOwned=false;
             nativeHeldIconWidth=nativeHeldIconHeight=0f;
             repeatTarget=null; repeating=repeatBlocked=false; actionFrame=nativeErrorFrame=-1;
-            chipRootContext = null;
+            chipRootContext = shipDroidRootContext = gearModificationRootContext = questRootContext = null;
             navigator.Reset(); if(renderer!=null) renderer.Dispose(); renderer=null;
             rendererIsPage=assetFailed=updateFailed=false;
             InventoryFeedback.Reset(); InventoryItemLifecycle.Reset(); PortalMenuContext.Reset();

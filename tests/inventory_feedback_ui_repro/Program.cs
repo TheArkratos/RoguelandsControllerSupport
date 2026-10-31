@@ -35,25 +35,29 @@ class Program {
   Check(GUI.Boxes[0].width<Screen.width/2,"short hints are compact rather than full width");CardsBoundedAndCentered();
   game.Hold(7,23);
   InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,30));Draw();
-  Check(GUI.Labels[0].Contains("X Place one") && GUI.Labels[0].Contains("RB Drop") && GUI.Labels[0].Contains("B Return"),"held contextual hints");
+  Check(GUI.Labels[0].Contains("X Place one") && GUI.Labels[0].Contains("RT Drop") && GUI.Labels[0].Contains("B Return"),"held contextual hints");
   InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,30),storagePaging:true);Draw();
-  Check(GUI.Labels[0].Contains("LB Previous page")&&GUI.Labels[0].Contains("RB Next page")&&!GUI.Labels[0].Contains("RB Drop"),
-      "storage bottom hint card advertises bumpers and hides conflicting drop");
+  Check(GUI.Labels[0].Contains("LB Previous page")&&GUI.Labels[0].Contains("RB Next page")&&GUI.Labels[0].Contains("RT Drop")&&!GUI.Labels[0].Contains("·   RB Drop"),
+      "storage bottom hint card advertises RT Drop and bumper pages");
   Check(GUI.Labels[0].Contains("B Return")&&GUI.Labels[0].Contains("L3 Place"),"paging hints preserve other configured actions");
-  BindingConfig remappedDrop=BindingConfig.Parse(BindingConfig.DefaultText.Replace("MenuDrop = Joystick1Button5","MenuDrop = Joystick1Button12").Split('\n'));
+  BindingConfig remappedDrop=BindingConfig.Parse(BindingConfig.DefaultText.Replace("MenuDrop = RightTrigger","MenuDrop = Joystick1Button12").Split('\n'));
   InventoryFeedback.SetContext(game,slot,true,remappedDrop,"Place","Place one",false,true,Badge(10,30),storagePaging:true);Draw();
-  Check(GUI.Labels[0].Contains("Button 12 Drop")&&GUI.Labels[0].Contains("RB Next page"),"non-bumper remapped drop retains accurate storage hint");
+  Check(GUI.Labels[0].Contains("Button 12 Drop")&&GUI.Labels[0].Contains("RB Next page")&&!GUI.Labels[0].Contains("LB + RB Drop"),"non-bumper remapped drop retains accurate hint without old chord");
+  game.Hold(0,0);
+  InventoryFeedback.SetContext(game,slot,true,bindings,"Pick up",null,false,false,storagePaging:true);Draw();
+  Check(!GUI.Labels[0].Contains("Drop")&&GUI.Labels[0].Contains("RB Next page"),"empty-handed storage advertises paging without drop chord");
+  game.Hold(7,23);
   BindingConfig recipeDefaults=BindingConfig.Parse(BindingConfig.DefaultText.Split('\n'));
   InventoryFeedback.SetContext(game,slot,true,recipeDefaults,"Pick up",null,false,true,Badge(10,30),recipePaging:true);Draw();
-  Check(GUI.Labels[0].Contains("LB Previous page")&&GUI.Labels[0].Contains("RB Next page")&&!GUI.Labels[0].Contains("RB Drop"),"recipe paging hints reserve configured default bumpers");
+  Check(GUI.Labels[0].Contains("LB Previous page")&&GUI.Labels[0].Contains("RB Next page")&&GUI.Labels[0].Contains("RT Drop"),"recipe paging reserves bumpers while RT Drop stays available");
   BindingConfig recipeRemapped=BindingConfig.Parse(BindingConfig.DefaultText.Replace("MenuPreviousPage = Joystick1Button4","MenuPreviousPage = Joystick1Button11").Replace("MenuNextPage = Joystick1Button5","MenuNextPage = Joystick1Button0").Split('\n'));
   InventoryFeedback.SetContext(game,slot,true,recipeRemapped,"Pick up",null,false,true,Badge(10,30),recipePaging:true);Draw();
-  Check(GUI.Labels[0].Contains("Button 11 Previous page")&&GUI.Labels[0].Contains("A Next page")&&!GUI.Labels[0].Contains("A Pick up")&&GUI.Labels[0].Contains("RB Drop"),"recipe paging hints reflect remapping and suppress only conflicting actions");
+  Check(GUI.Labels[0].Contains("Button 11 Previous page")&&GUI.Labels[0].Contains("A Next page")&&!GUI.Labels[0].Contains("A Pick up")&&GUI.Labels[0].Contains("RT Drop"),"recipe paging hints reflect remapping and suppress only conflicting actions");
   BindingConfig recipeUnbound=BindingConfig.Parse(BindingConfig.DefaultText.Replace("MenuPreviousPage = Joystick1Button4","MenuPreviousPage = Unbound").Replace("MenuNextPage = Joystick1Button5","MenuNextPage = Unbound").Split('\n'));
   InventoryFeedback.SetContext(game,slot,true,recipeUnbound,"Pick up",null,false,true,Badge(10,30),recipePaging:true);Draw();
-  Check(!GUI.Labels[0].Contains("Previous page")&&!GUI.Labels[0].Contains("Next page")&&GUI.Labels[0].Contains("RB Drop"),"unbound recipe paging restores normal action hints");
+  Check(!GUI.Labels[0].Contains("Previous page")&&!GUI.Labels[0].Contains("Next page")&&GUI.Labels[0].Contains("RT Drop"),"unbound recipe paging restores normal action hints");
   InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,30));Draw();
-  Check(GUI.Labels[0].Contains("RB Drop")&&!GUI.Labels[0].Contains("Next page"),"leaving storage restores ordinary drop hint");
+  Check(GUI.Labels[0].Contains("RT Drop")&&!GUI.Labels[0].Contains("Next page"),"leaving storage restores ordinary drop hint");
   Check(GUI.Labels.Contains("23"),"held quantity");
   Rect smallBadgeQuantity=GUI.Draws[GUI.Draws.Count-1].rect;Check(smallBadgeQuantity.x>=10&&smallBadgeQuantity.xMax<=30,"quantity remains in selected cell even when badge fills it");
   InventoryFeedback.SetContext(game,slot,true,bindings,"Place","Place one",false,true,Badge(10,70));Draw();
@@ -91,7 +95,7 @@ class Program {
   GameScript.inventoryOpen=false;InventoryFeedback.Reject("Storage full");Draw();Check(GUI.Labels.Count==0,"closed inventory hides feedback");
   GameScript.inventoryOpen=true;game.inventoryMain.activeInHierarchy=false;game.menuCombat.activeInHierarchy=true;game.holdingCombatChip=true;game.Hold(7,0);
   InventoryFeedback.SetContext(game,slot,true,bindings,"Place chip",null,false,true);Draw();
-  Check(GUI.Labels.Count>0&&GUI.Labels[0].Contains("B Return")&&GUI.Labels[0].Contains("RB Drop"),"quantity-zero chip menu shows return/drop hints while ordinary inventory is hidden");
+  Check(GUI.Labels.Count>0&&GUI.Labels[0].Contains("B Return")&&GUI.Labels[0].Contains("RT Drop"),"quantity-zero chip menu shows return/drop hints while ordinary inventory is hidden");
   game.Hold(7,12);InventoryFeedback.SetContext(game,slot,true,bindings,"Place chip",null,false,true);Draw();
   Check(!GUI.Labels.Contains("12"),"chip presentation never draws an ordinary stack counter");
   InventoryFeedback.Reset();Console.WriteLine("PASS "+checks+" contextual feedback, compact cards, wrapping, scale, contrast, badge geometry, handoff, lifecycle checks");

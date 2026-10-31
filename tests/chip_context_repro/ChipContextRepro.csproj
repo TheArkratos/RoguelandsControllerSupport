@@ -22,5 +22,8 @@
     <Compile Include="../chip_inventory_repro/ChipGame.cs" />
       <Compile Include="../PortalMenuContextStub.cs" Link="PortalMenuContextStub.cs" />
       <Compile Include="../ItemConversionContextStub.cs" Link="ItemConversionContextStub.cs" />
+      <Compile Include="../ShipDroidMenuStub.cs" />
+      <Compile Include="../GearModificationMenuStub.cs" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../QuestMenuStub.cs" /></ItemGroup>
 </Project>

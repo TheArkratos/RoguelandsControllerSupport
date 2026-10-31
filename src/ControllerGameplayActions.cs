@@ -110,7 +110,7 @@ namespace ControllerSupport
 
         private static bool Available(GameScript game)
         {
-            if (!ControllerInputOwnership.UsingController || game == null || blockedFrame == Time.frameCount || GameScript.inventoryOpen ||
+            if (!ControllerInputOwnership.UsingController || ControllerInputOwnership.GameplayBlocked || game == null || blockedFrame == Time.frameCount || GameScript.inventoryOpen ||
                 GameScript.pausing || GameScript.dead || GameScript.buildMode ||
                 PlayerScript.beaming || !MenuScript.player || GadgetCoreAPI.IsInputFrozen()) return false;
             NetworkView view = MenuScript.player.GetComponent<NetworkView>();

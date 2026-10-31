@@ -51,7 +51,7 @@ namespace ControllerSupport
             "MenuActivate = Joystick1Button0\n" +
             "MenuSecondary = Joystick1Button2\n" +
             "MenuTransfer = Joystick1Button3\n" +
-            "MenuDrop = Joystick1Button5\n" +
+            "MenuDrop = RightTrigger\n" +
             "MenuCancel = Joystick1Button1\n" +
             "MenuPreviousPage = Joystick1Button4\n" +
             "MenuNextPage = Joystick1Button5\n" +
@@ -206,7 +206,7 @@ namespace ControllerSupport
             // Legacy files predate these actions. Add defaults only in memory;
             // explicitly configured Unbound and existing file bytes are preserved.
             AddLegacyAction(values, "MenuTransfer", "Joystick1Button3", MenuActions);
-            AddLegacyAction(values, "MenuDrop", "Joystick1Button5", MenuActions);
+            AddLegacyAction(values, "MenuDrop", "RightTrigger", MenuActions);
             AddLegacyAction(values, "MenuCancel", "Joystick1Button1", MenuActions);
             AddLegacyAction(values, "MenuPreviousPage", "Joystick1Button4", RecipePagingActions);
             AddLegacyAction(values, "MenuNextPage", "Joystick1Button5", RecipePagingActions);

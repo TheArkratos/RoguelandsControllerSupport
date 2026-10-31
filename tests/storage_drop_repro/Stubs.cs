@@ -148,6 +148,8 @@ public class GameScript : UnityEngine.Object
     public System.Collections.IEnumerator ShiftClickCraft(int slot) { throw new System.NotSupportedException("Unexpected Alchemy transfer in non-Alchemy fixture"); }
     public void SelectPage(int page) { if (page <= storageLevel) currentStoragePage = page; }
     public static bool inventoryOpen = true, pausing, dead, buildMode;
+    public UnityEngine.GameObject menuStory, menuEmblemForge, menuTrasher, menuPrism;
+    public void LeaveNPC() { if(menuStory) menuStory.SetActive(false); }
     public UnityEngine.GameObject menuPause, inventoryMain, inventoryBar, menuStorage,
         holdingItemObj, holdingItemIcon;
     public UnityEngine.GameObject[] storageButton = new UnityEngine.GameObject[12];

@@ -7,6 +7,10 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/ControllerLookDirection.cs" />
+    <Compile Include="../../src/ControllerFacing.cs" />
+    <Compile Include="../../src/JoystickInputState.cs" />
+    <Compile Include="../../src/RawJoystickEvent.cs" />
     <Compile Include="../../src/InventoryItemLifecycle.cs" Link="InventoryItemLifecycle.cs" />
     <Compile Include="../../src/InventoryLifecyclePatches.cs" Link="InventoryLifecyclePatches.cs" />
     <Compile Include="Program.cs" />

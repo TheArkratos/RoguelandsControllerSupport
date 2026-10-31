@@ -29,6 +29,7 @@ namespace UnityEngine {
   public static implicit operator bool(Object o)=>o!=null&&!o.destroyed&&(!(o is Component c)||c.gameObject==null||!c.gameObject.destroyed);
   public static void DontDestroyOnLoad(Object o){}public static void Destroy(Object o){if(o!=null)o.destroyed=true;}
   public static T[] FindObjectsOfType<T>() where T:Object {var found=new List<T>();foreach(Object o in All)if(o is T t&&t)found.Add(t);return found.ToArray();}
+  public static Object Instantiate(Object original,Vector3 position,Quaternion rotation){var clone=Instantiate(original) as GameObject;if(clone){clone.transform.position=position;clone.transform.rotation=rotation;}return clone;}
   public static Object Instantiate(Object original){var source=original as GameObject;if(source==null)return null;return source.Clone();}
  }
  public class GameObject:Object {
@@ -51,7 +52,7 @@ namespace UnityEngine {
  public static class ComponentChildren {public static T[] GetComponentsInChildren<T>(this Component c,bool includeInactive)where T:class=>c.gameObject.GetComponentsInChildren<T>(includeInactive);}
  public class MonoBehaviour:Component{}
  public class Transform:Object {
-  public GameObject gameObject;public Transform parent;public Vector3 position,lossyScale=new Vector3(1,1,1),localScale=new Vector3(1,1,1);public Quaternion rotation;public float angle;
+  public GameObject gameObject;public Transform parent;public Vector3 eulerAngles;public Vector3 position,lossyScale=new Vector3(1,1,1),localScale=new Vector3(1,1,1);public Quaternion rotation;public float angle;
   public Transform(GameObject g){gameObject=g;}
   public Vector3 TransformPoint(Vector3 p){double r=angle*Math.PI/180;return position+new Vector3((float)(p.x*Math.Cos(r)-p.y*Math.Sin(r)),(float)(p.x*Math.Sin(r)+p.y*Math.Cos(r)),p.z);}
  }
@@ -61,7 +62,7 @@ namespace UnityEngine {
  public class BoxCollider:Collider {public Vector3 center,size=new Vector3(1,1,1);public override Bounds bounds=>new Bounds{center=transform.TransformPoint(center),size=size};}
  public class SphereCollider:Collider {public Vector3 center;public float radius=.5f;public override Bounds bounds=>new Bounds{center=transform.TransformPoint(center)};}
  public static class Physics {public static Collider[] Candidates=new Collider[0];public static int Searches;public static Collider[] OverlapSphere(Vector3 p,float r,int mask){Searches++;return Candidates;}}
- public class Camera:Object {public static Camera main=new Camera();public Vector3 ScreenToWorldPoint(Vector3 p)=>p;public Vector3 WorldToScreenPoint(Vector3 p)=>new Vector3(p.x,p.y,1);public Vector3 ViewportToWorldPoint(Vector3 p)=>new Vector3(p.x*40-20,p.y*20-10,0);}
+ public class Camera:Object {public static Camera main=new Camera();public Func<Vector3,Vector3> ScreenProjection,WorldProjection;public Vector3 ScreenToWorldPoint(Vector3 p)=>ScreenProjection!=null?ScreenProjection(p):p;public Vector3 WorldToScreenPoint(Vector3 p)=>WorldProjection!=null?WorldProjection(p):new Vector3(p.x,p.y,1);public Vector3 ViewportToWorldPoint(Vector3 p)=>new Vector3(p.x*40-20,p.y*20-10,0);}
  public static class Input {public static Vector3 mousePosition{get;set;}public static bool Click;public static bool GetMouseButtonDown(int n)=>Click;}
  public static class Time {public static int frameCount;public static float unscaledTime,unscaledDeltaTime=.02f;public static float time=>unscaledTime;}
  public class NetworkView:Component {public bool isMine=true;}
@@ -83,7 +84,7 @@ namespace UnityEngine {
  public static class GUI {public struct Draw {public Color Color;public Matrix4x4 Matrix;public Rect Rect;}public static List<Draw> Recorded=new List<Draw>();public static Color color;public static Matrix4x4 matrix;public static int Draws;public static void DrawTexture(Rect r,Texture2D t){Draws++;Recorded.Add(new Draw{Color=color,Matrix=matrix,Rect=r});}}
  public static class Screen {public static int height=1200;}
 }
-public class PlayerScript:UnityEngine.MonoBehaviour {public static bool beaming;public bool attacking;public UnityEngine.Transform shot;public IEnumerator Attack(){yield break;}public IEnumerator Repeater(){yield break;}public void Staff(){} }
+public class PlayerScript:UnityEngine.MonoBehaviour {public UnityEngine.GameObject e;public static bool beaming;public bool attacking;public UnityEngine.Transform shot;public IEnumerator Attack(){yield break;}public IEnumerator Repeater(){yield break;}public void Staff(){} public void ValflameProj(){} }
 public class Projectile:UnityEngine.MonoBehaviour {private bool isController=true;public void SetController(bool value){isController=value;}public float speed;public int special;public bool isStaff,onlyHorizontal,onlyVertical,isFlame,isPerceval,treant,moloch,tyrannog,isSwathe;public class UpdatePosToken{public Projectile Owner;public bool MoveNext(){return false;}}}
 public class EnemyScript:UnityEngine.MonoBehaviour {public int hp=10;public bool dead,dying;}
 public class GameScript {public static int[] equippedIDs=new[]{404};public static bool combatMode=true,dead,pausing,buildMode,inventoryOpen,talking;public void ActivateCombatChip(int id){}public void Atalanta(){}}
@@ -91,11 +92,11 @@ public static class Menuu {public static bool usingController;}
 public static class MenuScript {public static UnityEngine.GameObject player;}
 public static class ControllerCursor {public static float staticX,staticY;}
 public class ActionCursor:UnityEngine.MonoBehaviour{}
-namespace ControllerSupport {internal static class ControllerGameplayInput {internal static bool CloseAimHeld()=>false;} public static class MouseOnlyHelperAimPatch {public static IEnumerable<MethodBase> TargetMethods(){yield break;}}}
+namespace ControllerSupport {internal static class ControllerGameplayInput {internal static bool CloseAimHeld()=>false;}}
 namespace GadgetCore.API {public static class GadgetCoreAPI {public static bool Frozen;public static bool IsInputFrozen()=>Frozen;}[AttributeUsage(AttributeTargets.Class)]public class HarmonyGadgetAttribute:Attribute{public HarmonyGadgetAttribute(string s){}}}
 namespace HarmonyLib {
  [AttributeUsage(AttributeTargets.Class,AllowMultiple=true)]public class HarmonyPatch:Attribute{public HarmonyPatch(){}public HarmonyPatch(Type t,string s){}}
- [AttributeUsage(AttributeTargets.Method)]public class HarmonyPrefix:Attribute{}
+ [AttributeUsage(AttributeTargets.Method)]public class HarmonyTargetMethods:Attribute{}public class HarmonyPrefix:Attribute{}
  [AttributeUsage(AttributeTargets.Method)]public class HarmonyPostfix:Attribute{}
  [AttributeUsage(AttributeTargets.Method)]public class HarmonyFinalizer:Attribute{}
  [AttributeUsage(AttributeTargets.Method)]public class HarmonyTranspiler:Attribute{}

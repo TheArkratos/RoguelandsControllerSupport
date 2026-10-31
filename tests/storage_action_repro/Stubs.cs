@@ -190,8 +190,9 @@ namespace ControllerSupport
         internal float AimX, AimY;
         internal bool LeftTriggerHeld, RightTriggerHeld, LeftTriggerPressed, RightTriggerPressed;
         internal bool Held, Pressed;
-        internal bool ButtonHeld(int number) { return number == 0 && Held; }
-        internal bool ButtonPressed(int number) { return number == 0 && Pressed; }
+        internal readonly bool[] HeldButtons = new bool[20], PressedButtons = new bool[20];
+        internal bool ButtonHeld(int number) { return (number == 0 && Held) || HeldButtons[number]; }
+        internal bool ButtonPressed(int number) { return (number == 0 && Pressed) || PressedButtons[number]; }
         internal bool DPadHeld(string token) { return false; }
         internal bool DPadPressed(string token) { return false; }
     }

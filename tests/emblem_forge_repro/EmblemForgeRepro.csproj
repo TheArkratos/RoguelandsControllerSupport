@@ -21,5 +21,8 @@
     <Compile Include="../../src/ItemConversionContext.cs" Link="ItemConversionContext.cs" />
     <Compile Include="../inventory_actions_repro/Stubs.cs" />
       <Compile Include="../PortalMenuContextStub.cs" Link="PortalMenuContextStub.cs" />
+      <Compile Include="../ShipDroidMenuStub.cs" />
+      <Compile Include="../GearModificationMenuStub.cs" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../QuestMenuStub.cs" /></ItemGroup>
 </Project>

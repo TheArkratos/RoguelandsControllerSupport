@@ -314,8 +314,79 @@ internal static class Program
             !ControllerMenuSelection.ClosingStorageWouldDropHeldItem(game));
     }
 
+    private static void Bumpers(bool left, bool right)
+    {
+        ControllerMenuSelection.EndNativeUpdate();
+        pad.PressedButtons[4] = left && !pad.HeldButtons[4];
+        pad.PressedButtons[5] = right && !pad.HeldButtons[5];
+        pad.HeldButtons[4] = left; pad.HeldButtons[5] = right;
+        Time.frameCount++; ControllerMenuSelection.Prepare(game);
+    }
+
+    private static void Trigger(bool held)
+    {
+        ControllerMenuSelection.EndNativeUpdate();
+        pad.RightTriggerPressed = held && !pad.RightTriggerHeld;
+        pad.RightTriggerHeld = held;
+        Time.frameCount++; ControllerMenuSelection.Prepare(game);
+    }
+
+    private static void StorageDropTriggerCases()
+    {
+        NewScene(); game.SetHeldItem(21);
+        game.storageButton[1] = Add(game.menuStorage, "page1", "Untagged", 11, 2, 0).gameObject;
+        game.storageButton[2] = Add(game.menuStorage, "page2", "Untagged", 12, 2, 0).gameObject;
+        Trigger(true);
+        Expect("RT makes storage held-stack drop reachable", InventoryItemLifecycle.DropCalls == 1);
+        Expect("storage RT drop does not change page", game.currentStoragePage == 0);
+        Expect("rejected RT drop preserves held item and UI", game.holdingItem.id == 21 && GameScript.inventoryOpen);
+        Trigger(true); Expect("held RT cannot repeat drop", InventoryItemLifecycle.DropCalls == 1);
+        Trigger(false); Trigger(true); Expect("release and fresh RT drops again", InventoryItemLifecycle.DropCalls == 2);
+        Trigger(false); Bumpers(true, true);
+        Expect("old bumper chord cannot drop", InventoryItemLifecycle.DropCalls == 2 && game.currentStoragePage == 0);
+        Bumpers(false, false); Bumpers(false, true);
+        Expect("single RB pages without drop", game.currentStoragePage == 1 && InventoryItemLifecycle.DropCalls == 2);
+
+        NewScene(); Trigger(true);
+        Expect("empty handed RT does not drop", InventoryItemLifecycle.DropCalls == 0);
+
+        NewScene(); game.SetHeldItem(21);
+        GameScript.inventoryOpen = false; Time.frameCount++; ControllerMenuSelection.Prepare(game);
+        GameScript.inventoryOpen = true; Trigger(true); Trigger(true);
+        Expect("held entry RT cannot drop", InventoryItemLifecycle.DropCalls == 0);
+        Trigger(false); Trigger(true); Expect("entry RT rearms after release", InventoryItemLifecycle.DropCalls == 1);
+
+        NewScene(); game.SetHeldItem(21); GadgetCore.API.GadgetCoreAPI.Frozen = true;
+        Trigger(true); Expect("modal blocks RT drop", InventoryItemLifecycle.DropCalls == 0);
+        GadgetCore.API.GadgetCoreAPI.Frozen = false; Trigger(true);
+        Expect("modal dismissal cannot reuse held RT", InventoryItemLifecycle.DropCalls == 0);
+        Trigger(false); Trigger(true); Expect("modal recovery permits fresh RT", InventoryItemLifecycle.DropCalls == 1);
+
+        NewScene(); game.SetHeldItem(21); InventoryItemLifecycle.BlockMutations = true;
+        Trigger(true); Expect("quarantine blocks RT", InventoryItemLifecycle.DropCalls == 0);
+        InventoryItemLifecycle.BlockMutations = false; Trigger(true);
+        Expect("quarantine release cannot replay held RT", InventoryItemLifecycle.DropCalls == 0);
+
+        NewScene(); game.SetHeldItem(21); ControllerInputOwnership.Configure(() => false);
+        Trigger(true); Expect("unowned RT cannot drop", InventoryItemLifecycle.DropCalls == 0);
+        ControllerInputOwnership.Configure(() => true); Trigger(true);
+        Expect("ownership handoff cannot replay held RT", InventoryItemLifecycle.DropCalls == 0);
+        Trigger(false); Trigger(true); Expect("ownership handoff rearms on release", InventoryItemLifecycle.DropCalls == 1);
+
+        NewScene(); game.SetHeldItem(21); Input.left = true; Trigger(true);
+        Expect("physical click blocks RT", InventoryItemLifecycle.DropCalls == 0);
+        Input.left = false; Trigger(true); Expect("physical click release cannot replay RT", InventoryItemLifecycle.DropCalls == 0);
+
+        NewScene(); game.SetHeldItem(21); MenuScript.player.view.isMine = false; Trigger(true);
+        Expect("nonlocal player cannot RT drop", InventoryItemLifecycle.DropCalls == 0);
+        MenuScript.player.view.isMine = true;
+        NewScene(); game.SetHeldItem(21); pad.Connected = false; Trigger(true);
+        Expect("disconnected RT cannot drop", InventoryItemLifecycle.DropCalls == 0);
+    }
+
     private static int Main()
     {
+        StorageDropTriggerCases();
         MainCases();
         HotkeyPlacementCases();
         ArmingCases();

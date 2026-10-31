@@ -24,6 +24,7 @@ namespace ControllerSupport
         private static bool owned;
         private static int ownershipEntryFrame = -1;
         private static bool attackRequiresRelease = true;
+        private static bool jumpRequiresRelease = true;
         private static readonly FieldInfo CanInteractField = typeof(PlayerScript).GetField("canInteract",
             BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly FieldInfo InteractingField = typeof(PlayerScript).GetField("interacting",
@@ -54,7 +55,7 @@ namespace ControllerSupport
             leftPressed = rightPressed = downPressed = false;
             leftReleased = rightReleased = upReleased = downReleased = false;
             attackWasInCombat = false;
-            attackRequiresRelease = true;
+            attackRequiresRelease = jumpRequiresRelease = true;
         }
 
         private static bool Refresh()
@@ -69,7 +70,7 @@ namespace ControllerSupport
             {
                 owned = true;
                 ownershipEntryFrame = Time.frameCount;
-                attackRequiresRelease = true;
+                attackRequiresRelease = jumpRequiresRelease = true;
             }
             if (frame == Time.frameCount) return state != null && state.Connected;
             frame = Time.frameCount;
@@ -78,7 +79,7 @@ namespace ControllerSupport
             {
                 ResetDirections();
                 state = null;
-                attackRequiresRelease = true;
+                attackRequiresRelease = jumpRequiresRelease = true;
                 attackWasInCombat = false;
                 return false;
             }
@@ -104,7 +105,15 @@ namespace ControllerSupport
                 attackRequiresRelease = true;
                 attackWasInCombat = inCombat;
             }
-            if (!BoundHeld("PrimaryAction")) attackRequiresRelease = false;
+            // Logical UI consumption must not masquerade as a released trigger.
+            if (bindings == null || !bindings.Held("PrimaryAction", state)) attackRequiresRelease = false;
+            // Unity's legacy A=Jump edge and Linux joystick events can arrive in
+            // different frames. A menu owns jump independently of raw button-held
+            // state, and closing it cannot turn a confirm into a gameplay press.
+            // Test physical state directly: consumed bindings are not releases.
+            if (InventoryOwnsInput() || GameScript.pausing) jumpRequiresRelease = true;
+            else if ((bindings == null || !bindings.Held("Jump", state)) &&
+                !PhysicalButtonActive(0) && !Input.GetButtonDown("Jump")) jumpRequiresRelease = false;
             return true;
         }
 
@@ -120,7 +129,7 @@ namespace ControllerSupport
         // switching and NPC interaction have separate native talking guards.
         private static bool SafeActions()
         {
-            return !GameScript.pausing && !GameScript.dead && !GameScript.buildMode &&
+            return !ControllerInputOwnership.GameplayBlocked && !GameScript.pausing && !GameScript.dead && !GameScript.buildMode &&
                    !GameScript.inventoryOpen && inventoryInputFrame != Time.frameCount;
         }
 
@@ -139,6 +148,8 @@ namespace ControllerSupport
         {
             if (!ControllerInputOwnership.UsingController) { ResetFrame(); return; }
             inventoryInputFrame = Time.frameCount;
+            attackRequiresRelease = jumpRequiresRelease = true;
+            if (ControllerInputOwnership.GameplayBlocked) attackWasInCombat = false;
             ControllerGameplayActions.ConsumeForFrame();
         }
 
@@ -187,7 +198,7 @@ namespace ControllerSupport
 
         private static bool InventoryOwnsInput()
         {
-            return InventoryActive() || inventoryInputFrame == Time.frameCount;
+            return ControllerInputOwnership.GameplayBlocked || InventoryActive() || inventoryInputFrame == Time.frameCount;
         }
 
         private static bool InventoryActive()
@@ -210,9 +221,10 @@ namespace ControllerSupport
         }
 
         // These signatures deliberately mirror the Unity calls replaced by
-        // GameplayInputPatches. Vanilla input is always ORed in.
+        // GameplayInputPatches. Vanilla input is ORed in outside an owned modal UI.
         internal static bool PlayerButton(string name)
         {
+            if (ControllerInputOwnership.GameplayBlocked) return false;
             bool vanilla = Input.GetButton(name);
             if (!Refresh()) return vanilla;
             switch (name)
@@ -230,20 +242,29 @@ namespace ControllerSupport
 
         internal static bool PlayerButtonDown(string name)
         {
+            if (ControllerInputOwnership.GameplayBlocked)
+            {
+                jumpRequiresRelease = true;
+                return false;
+            }
             bool vanilla = Input.GetButtonDown(name);
             if (!Refresh()) return vanilla;
+            // Native menu opening can happen after another adapter refreshed
+            // this frame. Modal ownership must stay live across that cache.
+            if (name == "Jump" && (InventoryOwnsInput() || GameScript.pausing)) jumpRequiresRelease = true;
             switch (name)
             {
                 case "Left": return vanilla || leftPressed;
                 case "Right": return vanilla || rightPressed;
                 case "Down": return vanilla || downPressed;
                 // The game's legacy pad mapping has Y=Up and A=Jump.
-                // Keep keyboard input unless its key is pressed in the same
-                // frame or held period as the conflicting pad button (an unavoidable legacy
-                // InputManager ambiguity, confined to these events).
+                // Keyboard ownership returns native values above. While the
+                // controller owns a menu, jump is blocked independently of raw
+                // A timing; gameplay still filters the legacy A alias.
                 case "Up": return vanilla && !state.ButtonHeld(2) && !state.ButtonHeld(3) && !MenuInputHeld();
-                case "Jump": return (vanilla && !PhysicalButtonActive(0) && !MenuInputHeld()) ||
-                    (SafeActions() && BoundPressed("Jump"));
+                case "Jump": return !jumpRequiresRelease &&
+                    ((vanilla && !PhysicalButtonActive(0) && !MenuInputHeld()) ||
+                    (SafeActions() && BoundPressed("Jump")));
                 // Vanilla also maps LB/RB to separate dash directions.
                 case "Dash Left": return (vanilla && !state.ButtonHeld(4) && !MenuInputHeld()) ||
                     (SafeActions() && left && BoundPressed("Dash"));
@@ -257,6 +278,7 @@ namespace ControllerSupport
         // trigger the augment's Up-edge branch when no NPC is in range.
         internal static bool PlayerInteractionButtonDown(string name, PlayerScript player)
         {
+            if (ControllerInputOwnership.GameplayBlocked) return false;
             bool vanilla = Input.GetButtonDown(name);
             if (!Refresh()) return vanilla;
             bool xHeld = state.ButtonHeld(2);
@@ -273,6 +295,8 @@ namespace ControllerSupport
 
         internal static bool PlayerButtonUp(string name)
         {
+            // Releases clear native movement/augment latches (upping/downing).
+            // A modal blocks new actions, but must not swallow this cleanup.
             bool vanilla = Input.GetButtonUp(name);
             if (!Refresh()) return vanilla;
             switch (name)
@@ -287,11 +311,12 @@ namespace ControllerSupport
 
         internal static float PlayerAxis(string name)
         {
+            if (ControllerInputOwnership.GameplayBlocked) return 0f;
             float vanilla = Input.GetAxis(name);
             if (name == "Horizontal" && Refresh() && Math.Abs(state.MoveX) > DirectionThreshold)
                 return state.MoveX;
             if (name == "Attack" && Refresh() && (MenuInputHeld() ||
-                (TokenConsumed("RightTrigger") && state.RightTriggerHeld))) return 0f;
+                ((attackRequiresRelease || TokenConsumed("RightTrigger")) && state.RightTriggerHeld))) return 0f;
             if (name != "Attack" || !Refresh() || !SafeActions() || !GameScript.combatMode ||
                 attackRequiresRelease || !BoundHeld("PrimaryAction")) return vanilla;
             // Existing PlayerScript.Update tests Attack < 0 and starts its
@@ -301,6 +326,7 @@ namespace ControllerSupport
 
         internal static bool GameButtonDown(string name)
         {
+            if (ControllerInputOwnership.GameplayBlocked) return false;
             bool vanilla = Input.GetButtonDown(name);
             if (!Refresh()) return vanilla;
             if (name != null && name.Length == 8 && name.StartsWith("UseItem", StringComparison.Ordinal) &&
@@ -331,7 +357,7 @@ namespace ControllerSupport
 
         internal static bool GamePausePressed()
         {
-            return Refresh() && !GameScript.inventoryOpen && !InventoryOwnsInput() && MenuScript.player && !GameScript.dead &&
+            return !ControllerInputOwnership.GameplayBlocked && Refresh() && !GameScript.inventoryOpen && !InventoryOwnsInput() && MenuScript.player && !GameScript.dead &&
                    !PlayerScript.beaming && BoundPressed("Pause");
         }
 
@@ -347,6 +373,7 @@ namespace ControllerSupport
 
         internal static bool ExplorationContextSwitchPressed()
         {
+            if (ControllerInputOwnership.GameplayBlocked) return false;
             if (!Refresh()) return false;
             return BoundPressed("CombatMode") || BoundPressed("Inventory") ||
                 BoundPressed("Pause") || Input.GetButtonDown("CombatMode") ||
@@ -355,6 +382,7 @@ namespace ControllerSupport
 
         internal static bool GameDroidButtonDown(string name, GameScript game)
         {
+            if (ControllerInputOwnership.GameplayBlocked) return false;
             bool vanilla = Input.GetButtonDown(name);
             return vanilla && !(Refresh() && PhysicalButtonConsumed(5)) && !(Refresh() && InventoryOwnsInput() &&
                 (state.ButtonHeld(5) || MenuInputHeld())) &&

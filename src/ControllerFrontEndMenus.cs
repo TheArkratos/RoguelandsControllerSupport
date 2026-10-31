@@ -22,6 +22,7 @@ namespace ControllerSupport
         private static Func<JoystickInputState> stateProvider;
         private static BindingConfig bindings;
         private static Action<string> warning;
+        private static Action consumeStoryInput;
         private static SelectionCornerRenderer corners;
         private static UnityEngine.Object owner;
         private static GameObject menuRoot;
@@ -45,12 +46,13 @@ namespace ControllerSupport
         internal static Collider SelectedCollider { get { return selected; } }
 
         internal static void Configure(Func<JoystickInputState> provider,
-            BindingConfig config, Action<string> warningLogger)
+            BindingConfig config, Action<string> warningLogger, Action consumeStory = null)
         {
             Reset();
             stateProvider = provider;
             bindings = config;
             warning = warningLogger;
+            consumeStoryInput = consumeStory;
         }
 
         internal static void Reset()
@@ -66,6 +68,7 @@ namespace ControllerSupport
             stateProvider = null;
             bindings = null;
             warning = null;
+            consumeStoryInput = null;
             sampledMouse = false;
             controllerOwns = false;
             activateArmed = false;
@@ -87,7 +90,7 @@ namespace ControllerSupport
             if (Active(menu.menuDeleteChar))
             {
                 root = menu.menuDeleteChar;
-                allowed = new[] { "delNo" };
+                allowed = new[] { "delNo", "delYes" };
             }
             else if (Active(menu.menuStuffSelect))
             {
@@ -105,7 +108,8 @@ namespace ControllerSupport
             else if (Active(menu.menuCharSelect))
             {
                 root = menu.menuCharSelect;
-                allowed = new[] { "bs0", "bs1", "bs2", "bs3", "bs4", "bs5", "bBack" };
+                allowed = new[] { "bs0", "bs1", "bs2", "bs3", "bs4", "bs5",
+                    "del0", "del1", "del2", "del3", "del4", "del5", "bBack" };
             }
             else if (Active(menu.menuOptions))
             {
@@ -151,11 +155,32 @@ namespace ControllerSupport
 
         internal static void Begin(GameScript game)
         {
+            bool story = StoryOpen(game);
+            // Consume before closing/committing so this frame cannot also run a
+            // hotkey/attack even after the native choice hides its root.
+            if (story && OwnershipActive() && consumeStoryInput != null) consumeStoryInput();
             BeginMenu(game, game != null && GameScript.pausing && Active(game.menuPause)
-                    ? game.menuPause : null,
+                    ? game.menuPause : story ? game.menuStory : null,
+                story && !GameScript.pausing ? new[] { "bChoice0", "bChoice1", "bChoice2" } :
                 new[] { "bResume", "bOptions", "bQuit", "bHigherM",
                     "bLowerM", "bHigherS", "bLowerS", "bFullscreen" }, false);
+            if (!story || GameScript.pausing || !OwnershipActive() || !activeNativeUpdate ||
+                failed || bindings == null || stateProvider == null) return;
+            JoystickInputState state = stateProvider();
+            if (state == null || !state.Connected || !cancelArmed ||
+                !BoundPressed(state, "MenuCancel") || Input.GetMouseButtonDown(0) ||
+                Input.GetMouseButtonDown(1)) return;
+            // LeaveNPC dispatches these station roots before menuStory. Refuse
+            // a contradictory context rather than close a different menu/drop items.
+            if (Active(game.menuEmblemForge) || Active(game.menuTrasher) || Active(game.menuPrism)) return;
+            cancelArmed = activateArmed = false;
+            // Use native walk-away closure: no SelectChoice, story state or rewards.
+            game.LeaveNPC();
+            Clear();
         }
+
+        private static bool StoryOpen(GameScript game)
+        { return game != null && !GameScript.dead && Active(game.menuStory); }
 
         private static void BeginMenu(UnityEngine.Object nextOwner, GameObject root,
             string[] names, bool stuffGrid)
@@ -187,8 +212,18 @@ namespace ControllerSupport
                     cancelArmed = false;
                     heldDirection = 0;
                 }
-                if (!Contains(selected)) selected = choices.Count > 0 ? choices[0] : null;
+                bool deleting = title != null && root == title.menuDeleteChar;
+                if (!Contains(selected)) selected = deleting ? choices.Find(c => c.gameObject.name == "delNo") :
+                    choices.Count > 0 ? choices[0] : null;
+                bool deleteEntry = changed && deleting;
+                if (deleteEntry) selected = choices.Find(c => c.gameObject.name == "delNo");
                 bool characterEntry = changed && title != null && root == title.menuCharSelect;
+                GameScript storyGame = nextOwner as GameScript;
+                bool storyEntry = changed && storyGame != null && root == storyGame.menuStory;
+                if (storyEntry)
+                    selected = choices.Find(c => c.gameObject.name == "bChoice0") ??
+                        choices.Find(c => c.gameObject.name == "bChoice1") ??
+                        choices.Find(c => c.gameObject.name == "bChoice2");
                 if (characterEntry)
                 {
                     // Native character slots are row-major: bs0/bs1 on top.
@@ -209,7 +244,7 @@ namespace ControllerSupport
                 if (changed || mouseMoved || physicalClick)
                 {
                     Collider hovered = UnderPhysicalMouse(mouse);
-                    if (hovered != null && (!characterEntry || mouseMoved || physicalClick)) selected = hovered;
+                    if (hovered != null && (!(characterEntry || storyEntry || deleteEntry) || mouseMoved || physicalClick)) selected = hovered;
                     if (mouseMoved || physicalClick)
                     {
                         controllerOwns = false;
@@ -218,12 +253,14 @@ namespace ControllerSupport
                 }
 
                 JoystickInputState state = stateProvider();
+                if (!OwnershipActive()) return;
                 bool connected = state != null && state.Connected;
                 bool held = connected && BoundHeld(state, "MenuActivate");
                 bool cancelHeld = connected && BoundHeld(state, "MenuCancel");
                 if (changed) cancelArmed = !cancelHeld;
                 else if (!cancelHeld) cancelArmed = true;
                 if (!held) activateArmed = true;
+                if (storyEntry && connected && !mouseMoved && !physicalClick) controllerOwns = true;
                 int rawDirection = connected ? Direction(state) : 0;
                 if (changed) navigationRequiresRelease = rawDirection != 0;
                 if (rawDirection == 0) navigationRequiresRelease = false;
@@ -246,19 +283,10 @@ namespace ControllerSupport
 
                 syntheticClick = false;
                 if (!changed && !mouseMoved && !physicalClick && connected && activateArmed &&
-                    BoundPressed(state, "MenuActivate") && Contains(selected))
+                    BoundPressed(state, "MenuActivate") && Contains(selected) &&
+                    !(deleting && cancelArmed && BoundPressed(state, "MenuCancel")))
                 {
-                    // Validate the virtual ray before allowing a native click.
-                    Vector3 point = Camera.main.WorldToScreenPoint(selected.bounds.center);
-                    RaycastHit hit;
-                    if (point.z > 0f && Physics.Raycast(Camera.main.ScreenPointToRay(point),
-                        out hit, 10f) && hit.collider == selected)
-                    {
-                        controllerOwns = true;
-                        syntheticClick = true;
-                        activateArmed = false;
-                        cancelArmed = false;
-                    }
+                    ActivateSelected();
                 }
                 ShowCorners();
             }
@@ -268,6 +296,19 @@ namespace ControllerSupport
                 Clear();
                 if (warning != null) warning("Front-end controller menus disabled: " + error.Message);
             }
+        }
+
+        private static void ActivateSelected()
+        {
+            // Native handlers retain every action, including delete confirmation.
+            if (!Contains(selected) || Camera.main == null) return;
+            Vector3 point = Camera.main.WorldToScreenPoint(selected.bounds.center);
+            RaycastHit hit;
+            if (point.z <= 0f || !Physics.Raycast(Camera.main.ScreenPointToRay(point),
+                out hit, 10f) || hit.collider != selected) return;
+            controllerOwns = true;
+            syntheticClick = true;
+            activateArmed = cancelArmed = false;
         }
 
         internal static void End()
@@ -288,6 +329,7 @@ namespace ControllerSupport
 
         internal static bool MouseButtonDown(int button)
         {
+            if (ControllerMenuSelection.QuestMouseInputBlocked(button)) return false;
             if (!OwnershipActive()) return Input.GetMouseButtonDown(button);
             return Input.GetMouseButtonDown(button) ||
                 (button == 0 && activeNativeUpdate && syntheticClick && Contains(selected)) ||
@@ -304,12 +346,21 @@ namespace ControllerSupport
             if (name != "Cancel" || !activeNativeUpdate || failed || bindings == null || stateProvider == null)
                 return native;
             JoystickInputState state = stateProvider();
-            if (state == null || !state.Connected) return native;
+            if (!OwnershipActive() || state == null || !state.Connected) return native;
             // Keep Escape even if a physical B press occurs on the same frame.
             bool keyboard = Input.GetKeyDown(KeyCode.Escape) ||
                 (native && !state.ButtonHeld(1) && !state.ButtonPressed(1));
             bool cancel = cancelArmed && BoundPressed(state, "MenuCancel");
             if (cancel) cancelArmed = false;
+            Menuu title = owner as Menuu;
+            if (cancel && title != null && menuRoot == title.menuDeleteChar)
+            {
+                // Native Cancel returns to Main Menu. Route controller B through
+                // the dialog's native No action so character selection stays open.
+                selected = choices.Find(c => c.gameObject.name == "delNo");
+                ActivateSelected();
+                return keyboard;
+            }
             return keyboard || cancel;
         }
 
@@ -410,7 +461,13 @@ namespace ControllerSupport
 
         private static void Step(int direction)
         {
-            if (!Contains(selected)) { selected = choices.Count > 0 ? choices[0] : null; return; }
+            if (!Contains(selected))
+            {
+                Menuu dialog = owner as Menuu;
+                selected = dialog != null && menuRoot == dialog.menuDeleteChar ?
+                    choices.Find(c => c.gameObject.name == "delNo") : choices.Count > 0 ? choices[0] : null;
+                return;
+            }
             // These two title screens have intentional logical rows. Collider
             // spacing (and therefore the generic nearest-neighbor score) does
             // not reliably represent their navigation order.
@@ -459,10 +516,27 @@ namespace ControllerSupport
                 if (direction == -2) SelectNamed("bs4");
                 return true;
             }
+            if (from.Length == 4 && from.StartsWith("del", StringComparison.Ordinal) &&
+                from[3] >= '0' && from[3] <= '5')
+            {
+                int deletion = from[3] - '0';
+                if (direction == (deletion % 2 == 0 ? 1 : -1)) SelectNamed("bs" + deletion);
+                else if (direction == -2 && deletion >= 2) SelectNamed("del" + (deletion - 2));
+                else if (direction == 2 && deletion < 4) SelectNamed("del" + (deletion + 2));
+                else if (direction == 2) SelectNamed("bBack");
+                return true;
+            }
             if (from.Length != 3 || from[0] != 'b' || from[1] != 's' ||
                 from[2] < '0' || from[2] > '5') return false;
 
             int slot = from[2] - '0';
+            if (direction == (slot % 2 == 0 ? -1 : 1))
+            {
+                // Delete buttons sit on the outside edge of their own card.
+                // Empty character slots hide their native delete control.
+                SelectNamed("del" + slot);
+                return true;
+            }
             int target = -1;
             if (direction == -1 && slot % 2 == 1) target = slot - 1;
             else if (direction == 1 && slot % 2 == 0) target = slot + 1;
@@ -519,7 +593,10 @@ namespace ControllerSupport
         private static bool NativeHighlightScreen()
         {
             Menuu title = owner as Menuu;
-            if (title != null) return menuRoot == title.menuMain || menuRoot == title.menuCharSelect;
+            if (title != null) return menuRoot == title.menuMain || menuRoot == title.menuCharSelect || menuRoot == title.menuDeleteChar;
+            GameScript game = owner as GameScript;
+            if (game != null) return menuRoot == game.menuStory ||
+                (GameScript.pausing && menuRoot == game.menuPause);
             MenuScript modes = owner as MenuScript;
             return modes != null && menuRoot == modes.menu;
         }

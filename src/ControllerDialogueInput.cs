@@ -98,7 +98,7 @@ namespace ControllerSupport
 
         private static bool Available(GameScript game)
         {
-            if (game == null || !MenuScript.player || GameScript.pausing || GameScript.dead ||
+            if (ControllerInputOwnership.GameplayBlocked || game == null || !MenuScript.player || GameScript.pausing || GameScript.dead ||
                 GameScript.buildMode || GameScript.inventoryOpen || PlayerScript.beaming ||
                 GadgetCoreAPI.IsInputFrozen() || CurA == null || CurB == null || CurC == null ||
                 Exiting == null || (bool)Exiting.GetValue(game)) return false;

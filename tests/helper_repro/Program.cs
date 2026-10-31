@@ -44,7 +44,7 @@ internal static class Program
 
     private static void Main(string[] args)
     {
-        string managed = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), ".local/share/Steam/steamapps/common/Roguelands/Roguelands_Data/Managed");
+        string managed = LocalReferences.Get("RoguelandsManagedDir");
         AppDomain.CurrentDomain.AssemblyResolve += (_, e) => {
             string path = Path.Combine(managed, new AssemblyName(e.Name).Name + ".dll");
             return File.Exists(path) ? Assembly.LoadFrom(path) : null;
@@ -155,6 +155,10 @@ internal static class Program
             List<CodeInstruction> patched = InvokeTranspiler(transpiler, original, method);
             if (patched.Count != original.Count)
                 throw new Exception(name + ": mouse-only patch changed IL instruction count.");
+            MethodInfo expectedGetter = name == "ValflameProj"
+                ? replacementGetter.DeclaringType.Assembly.GetType("ControllerSupport.AimAssistValflamePatch", true)
+                    .GetMethod("MousePosition", BindingFlags.Static | BindingFlags.NonPublic)
+                : replacementGetter;
             int replaced = 0;
             for (int i = 0; i < original.Count; i++)
             {
@@ -162,7 +166,7 @@ internal static class Program
                     throw new Exception(name + ": mouse-only patch changed opcode at " + i);
                 if (IsMouse(original[i]))
                 {
-                    if (Equals(patched[i].operand, replacementGetter)) replaced++;
+                    if (Equals(patched[i].operand, expectedGetter)) replaced++;
                     else throw new Exception(name + ": physical mouse getter remains at " + i);
                 }
                 else if (!Equals(original[i].operand, patched[i].operand))

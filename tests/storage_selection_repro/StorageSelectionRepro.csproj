@@ -15,5 +15,8 @@
     <Compile Include="Stubs.cs" />
       <Compile Include="../PortalMenuContextStub.cs" Link="PortalMenuContextStub.cs" />
       <Compile Include="../ItemConversionContextStub.cs" Link="ItemConversionContextStub.cs" />
+      <Compile Include="../ShipDroidNavigationStub.cs" />
+      <Compile Include="../GearModificationNavigationStub.cs" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../QuestNavigationStub.cs" /></ItemGroup>
 </Project>
