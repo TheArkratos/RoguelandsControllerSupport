@@ -11,6 +11,7 @@ namespace ControllerSupport
         private readonly GadgetLogger logger;
         private readonly BindingConfig bindings;
         private readonly RawLinuxJoystickProbe rawLinuxProbe;
+        private readonly bool diagnostics;
         private readonly LastInputSource lastInputSource = new LastInputSource();
         private readonly KeyCode[] physicalKeyboardKeys;
         private readonly KeyCode[] buttons = new KeyCode[20];
@@ -23,13 +24,15 @@ namespace ControllerSupport
         private Vector3 previousMousePosition;
         private bool hasMousePosition;
 
-        internal InputProbe(GadgetLogger logger, BindingConfig bindings)
+        internal InputProbe(GadgetLogger logger, BindingConfig bindings, bool diagnostics = false)
         {
             this.logger = logger;
             this.bindings = bindings;
-            rawLinuxProbe = new RawLinuxJoystickProbe(logger);
-            for (int i = 0; i < buttons.Length; i++)
-                buttons[i] = (KeyCode)Enum.Parse(typeof(KeyCode), "Joystick1Button" + i);
+            this.diagnostics = diagnostics;
+            rawLinuxProbe = new RawLinuxJoystickProbe(logger, diagnostics);
+            if (diagnostics)
+                for (int i = 0; i < buttons.Length; i++)
+                    buttons[i] = (KeyCode)Enum.Parse(typeof(KeyCode), "Joystick1Button" + i);
             List<KeyCode> keys = new List<KeyCode>();
             foreach (KeyCode key in Enum.GetValues(typeof(KeyCode)))
             {
@@ -95,6 +98,9 @@ namespace ControllerSupport
                 }
             }
 
+            // Raw polling and device ownership above are functional. Legacy-axis
+            // and button enumeration below are calibration diagnostics only.
+            if (!diagnostics) return;
             for (int i = 0; i < buttons.Length; i++)
             {
                 bool pressed = Input.GetKeyDown(buttons[i]);

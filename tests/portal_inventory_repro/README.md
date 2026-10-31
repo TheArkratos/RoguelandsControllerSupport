@@ -6,7 +6,7 @@ The portal transport double controls target eligibility and native versus Gadget
 routing; the separate `portal_context_repro` exercises the real portal bridge.
 
 ```bash
-dotnet run --project Mods/ControllerSupport/tests/portal_inventory_repro/PortalInventoryRepro.csproj
+dotnet run --project tests/portal_inventory_repro/PortalInventoryRepro.csproj -p:UseSharedCompilation=false
 ```
 
 Covers shared inventory/portal selection, right-stick navigation and left-stick

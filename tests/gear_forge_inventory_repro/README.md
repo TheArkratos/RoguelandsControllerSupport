@@ -3,7 +3,7 @@
 Run from the repository root:
 
 ```bash
-dotnet run --project Mods/ControllerSupport/tests/gear_forge_inventory_repro
+dotnet run --project tests/gear_forge_inventory_repro -p:UseSharedCompilation=false
 ```
 
 The fixture compiles the actual shared crafting context, inventory navigator,

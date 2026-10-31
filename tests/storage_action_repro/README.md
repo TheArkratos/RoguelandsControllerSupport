@@ -1,5 +1,5 @@
 # Storage action production-code fixture
 
-Run `dotnet run --project Mods/ControllerSupport/tests/storage_action_repro/StorageActionRepro.csproj` from the repository root.
+Run `dotnet run --project tests/storage_action_repro/StorageActionRepro.csproj -p:UseSharedCompilation=false` from the repository root.
 
 The fixture compiles the real `ControllerMenuSelection`, `InventorySelectionNavigator`, and `BindingConfig` against a deterministic scene/input shim. It checks the synthetic left-click edge and cursor position for inventory, chest, and all six hotkey slots (including a stick-selected hotkey), the 6×6 extra-row bridge number, physical-click and mouse-motion priority, unlocked page activation and disabled stat activation, no repeated click after release, and opening-held A arming. Equipment tests also check ordinary-inventory pickup, matching weapon placement, and preservation on wrong-type rejection. Helper doubles isolate routing from lifecycle/rendering; production lifecycle, feedback and cursor positioning have dedicated fixtures. The hotkey checks went red against the previous routing code and green after the hotkey activation change. It verifies input routing, not actual game inventory mutation; a physical in-game test is still required before relying on it with valuable items.

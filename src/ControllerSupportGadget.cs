@@ -32,7 +32,8 @@ namespace ControllerSupport
 
         protected override void Initialize()
         {
-            probe = new InputProbe(Logger, bindings ?? BindingConfig.SafeDefaults());
+            bool diagnostics = Environment.GetEnvironmentVariable("ROGUELANDS_CONTROLLER_DIAGNOSTICS") == "1";
+            probe = new InputProbe(Logger, bindings ?? BindingConfig.SafeDefaults(), diagnostics);
             ControllerInputOwnership.Configure(() => probe != null && probe.UsingController, () =>
             {
                 GameScript game = InstanceTracker.GameScript;
@@ -42,7 +43,7 @@ namespace ControllerSupport
             ControllerDialogueInput.Configure(probe.PollState, bindings ?? BindingConfig.SafeDefaults());
             ControllerAim.Configure(probe.PollState);
             ControllerLookDirection.Configure(probe.PollState);
-            ControllerAimAssist.Trace = message => Logger.Log(message);
+            ControllerAimAssist.Trace = diagnostics ? (Action<string>)(message => Logger.Log(message)) : null;
             ControllerAimAssist.StartSession();
             ControllerGameplayActions.Configure(probe.PollState,
                 bindings ?? BindingConfig.SafeDefaults(), ControllerAimAssist.Toggle);

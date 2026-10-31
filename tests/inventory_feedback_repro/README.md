@@ -1,6 +1,6 @@
 # Phase 3 inventory feedback repro
 
-Run `dotnet run --project Mods/ControllerSupport/tests/inventory_feedback_repro/InventoryFeedbackRepro.csproj` from the repo root. This compiles the production `InventorySelectionNavigator.cs` and drives its real mouse-hover/update/selection path against a minimal synthetic scene. It makes no game/save/install changes.
+Run `dotnet run --project tests/inventory_feedback_repro/InventoryFeedbackRepro.csproj -p:UseSharedCompilation=false` from the repo root. This compiles the production `InventorySelectionNavigator.cs` and drives its real mouse-hover/update/selection path against a minimal synthetic scene. It makes no game/save/install changes.
 
 The fixture models a regular grid slot at `inventoryMain/6`, an equipped droid at `inventoryMain/42`, and the six colliders at `inventoryBar/0..5`, exposed by `GameScript.inventoryBar`. It checks mouse hover on all six hotkeys, right-stick movement into and out of the hotkey section, ordinary inventory and equipped droid selection, and inventory-close gating. The synthetic screen positions test selection logic only, not native alignment. Faith's separate stat-tagged `inventoryMain/6` collider is covered by the companion geometry/identity replay.
 

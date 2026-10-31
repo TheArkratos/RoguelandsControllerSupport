@@ -7,7 +7,7 @@ replay covers Emblem Forge, Item Trasher and Prism Forge. It sets `slotID` from 
 loader's conversion. It does not establish physical or multiplayer acceptance.
 
 ```bash
-dotnet run --project Mods/ControllerSupport/tests/emblem_forge_repro/EmblemForgeRepro.csproj
+dotnet run --project tests/emblem_forge_repro/EmblemForgeRepro.csproj -p:UseSharedCompilation=false
 ```
 
 Covers nested `bEmblem` discovery, configurable activation, native slot dispatch,

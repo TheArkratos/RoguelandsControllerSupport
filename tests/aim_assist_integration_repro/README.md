@@ -5,7 +5,7 @@ patch code against deterministic Unity/native doubles. No game, save, installed
 profile, GPU or physical controller is used.
 
 ```bash
-dotnet run --project Mods/ControllerSupport/tests/aim_assist_integration_repro/AimAssistIntegrationRepro.csproj
+dotnet run --project tests/aim_assist_integration_repro/AimAssistIntegrationRepro.csproj -p:UseSharedCompilation=false
 ```
 
 Checks acquisition only at a native attack-start seam, independent repeated

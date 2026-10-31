@@ -3,7 +3,7 @@
 Run from the repository root:
 
 ```sh
-dotnet run --project Mods/ControllerSupport/tests/phase3_geometry_repro/Phase3GeometryRepro.csproj
+dotnet run --project tests/phase3_geometry_repro/Phase3GeometryRepro.csproj -p:UseSharedCompilation=false
 ```
 
 This compiles the **production** `InventorySelectionNavigator.cs` against a

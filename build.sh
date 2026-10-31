@@ -14,6 +14,11 @@ for reference in mscorlib.dll System.dll System.Core.dll UnityEngine.dll Assembl
     test -f "$managed_dir/$reference" || { echo "Missing reference: $managed_dir/$reference" >&2; exit 1; }
 done
 test -f "$csc_dll" || { echo "Roslyn compiler not found: $csc_dll" >&2; exit 1; }
+# Only production files directly under src/ participate; tests stay separate.
+shopt -s nullglob
+source_files=("$project_dir"/src/*.cs)
+((${#source_files[@]})) || { echo "No production sources found." >&2; exit 1; }
+mapfile -d '' -t source_files < <(printf '%s\0' "${source_files[@]}" | LC_ALL=C sort -z)
 mkdir -p "$output_dir"
 
 dotnet "$csc_dll" \
@@ -31,54 +36,6 @@ dotnet "$csc_dll" \
     /resource:"$project_dir/Assets/SelectionCorners/corner-bottom-right.png",ControllerSupport.SelectionCorners.corner-bottom-right.png \
     /resource:"$project_dir/Assets/SelectionCorners/corner-bottom-left.png",ControllerSupport.SelectionCorners.corner-bottom-left.png \
     "$project_dir/Properties/AssemblyInfo.cs" \
-    "$project_dir/src/BindingConfig.cs" \
-    "$project_dir/src/RawJoystickEvent.cs" \
-    "$project_dir/src/JoystickInputState.cs" \
-    "$project_dir/src/LastInputSource.cs" \
-    "$project_dir/src/ControllerInputOwnership.cs" \
-    "$project_dir/src/RawLinuxJoystickProbe.cs" \
-    "$project_dir/src/InputProbe.cs" \
-    "$project_dir/src/ControllerGameplayInput.cs" \
-    "$project_dir/src/ControllerDialogueInput.cs" \
-    "$project_dir/src/ControllerGameplayActions.cs" \
-    "$project_dir/src/GameplayInputPatches.cs" \
-    "$project_dir/src/ControllerAim.cs" \
-    "$project_dir/src/ControllerFacing.cs" \
-    "$project_dir/src/ControllerLookDirection.cs" \
-    "$project_dir/src/ControllerAtalantaPlacement.cs" \
-    "$project_dir/src/ControllerCombatGuide.cs" \
-    "$project_dir/src/AimAssistGeometry.cs" \
-    "$project_dir/src/AimLeadPrediction.cs" \
-    "$project_dir/src/StaffTargetCrosshair.cs" \
-    "$project_dir/src/ControllerAimAssist.cs" \
-    "$project_dir/src/AimAssistPatches.cs" \
-    "$project_dir/src/ExplorationTargetSelector.cs" \
-    "$project_dir/src/ControllerExploration.cs" \
-    "$project_dir/src/ControllerVisibleCursor.cs" \
-    "$project_dir/src/InventoryNativeCursor.cs" \
-    "$project_dir/src/SelectionCornerStyle.cs" \
-    "$project_dir/src/SelectionCornerRenderer.cs" \
-    "$project_dir/src/InventorySelectionNavigator.cs" \
-    "$project_dir/src/PortalMenuContext.cs" \
-    "$project_dir/src/ItemConversionContext.cs" \
-    "$project_dir/src/CraftingMenuContext.cs" \
-    "$project_dir/src/CombatChipMenuContext.cs" \
-    "$project_dir/src/ShipDroidMenuContext.cs" \
-    "$project_dir/src/GearModificationMenuContext.cs" \
-    "$project_dir/src/QuestMenuContext.cs" \
-    "$project_dir/src/ControllerMenuSelection.cs" \
-    "$project_dir/src/InventoryItemLifecycle.cs" \
-    "$project_dir/src/InventoryLifecyclePatches.cs" \
-    "$project_dir/src/InventoryFeedback.cs" \
-    "$project_dir/src/InventoryCursorPosition.cs" \
-    "$project_dir/src/ControllerFrontEndMenus.cs" \
-    "$project_dir/src/ControllerInteractPrompt.cs" \
-    "$project_dir/src/ControllerAimPatches.cs" \
-    "$project_dir/src/TripleShotAimPatch.cs" \
-    "$project_dir/src/HelperAttackAimPatch.cs" \
-    "$project_dir/src/MouseOnlyHelperAimPatch.cs" \
-    "$project_dir/src/CameraAimPatches.cs" \
-    "$project_dir/src/ProbeRunner.cs" \
-    "$project_dir/src/ControllerSupportGadget.cs"
+    "${source_files[@]}"
 
 echo "Built $output_dir/ControllerSupport.dll"

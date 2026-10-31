@@ -25,6 +25,37 @@ namespace ControllerSupport
         }
         private sealed class Entry { internal WeakReference Owner; internal Attack Attack; }
         private sealed class Motion { internal WeakReference Target; internal Vector2 Center,Velocity; internal float Time; }
+        private const BindingFlags InstanceFields = BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
+        private sealed class IteratorFields
+        {
+            internal FieldInfo Player, Projectile;
+            internal IteratorFields(Type type)
+            {
+                foreach(FieldInfo field in type.GetFields(InstanceFields))
+                {
+                    if(Player==null && field.FieldType==typeof(PlayerScript)) Player=field;
+                    if(Projectile==null && field.FieldType==typeof(Projectile)) Projectile=field;
+                }
+            }
+        }
+        private sealed class HealthFields
+        {
+            internal readonly FieldInfo Hp, Dying, Dead;
+            internal HealthFields(Type type)
+            { Hp=type.GetField("hp",InstanceFields); Dying=type.GetField("dying",InstanceFields); Dead=type.GetField("dead",InstanceFields); }
+        }
+        private sealed class SegmentFields
+        {
+            internal readonly FieldInfo IsHead, MainHead;
+            internal SegmentFields(Type type)
+            { IsHead=type.GetField("isMainHead"); MainHead=type.GetField("mainHead"); }
+        }
+        // Cache metadata only. Every query still reads the current instance's
+        // owner, health and head fields; missing fields retain their null result.
+        private static readonly Dictionary<Type,IteratorFields> iteratorFields = new Dictionary<Type,IteratorFields>();
+        private static readonly Dictionary<Type,HealthFields> healthFields = new Dictionary<Type,HealthFields>();
+        private static readonly Dictionary<Type,SegmentFields> segmentFields = new Dictionary<Type,SegmentFields>();
+        private static readonly FieldInfo ProjectileControllerField = typeof(Projectile).GetField("isController",BindingFlags.Instance|BindingFlags.NonPublic);
         private static readonly Dictionary<int,Motion> motion = new Dictionary<int,Motion>();
         internal static float VelocitySmoothingSeconds = .1f;
         // Diagnostic overlays only; functional aiming/guide UI remains independent.
@@ -36,6 +67,7 @@ namespace ControllerSupport
             typeof(EnemyScript).Assembly.GetType("DestroyerTrue") };
         private static readonly Type HiveBox = typeof(EnemyScript).Assembly.GetType("HivemindBox");
         private static readonly Type Hive = typeof(EnemyScript).Assembly.GetType("Hivemind");
+        private static readonly FieldInfo HiveForwardField = HiveBox==null ? null : HiveBox.GetField("p");
         private static Attack current;
         private static GameObject indicator;
         private static Attack appliedVisual;
@@ -61,7 +93,7 @@ namespace ControllerSupport
         {
             attack.Lost=true;
             if(ReferenceEquals(appliedVisual,attack)) ClearAppliedVisual();
-            if(!attack.LossTraced) { attack.LossTraced=true; Log("attack="+attack.TraceId+" lost="+reason); }
+            if(!attack.LossTraced) { attack.LossTraced=true; if(Trace!=null) Log("attack="+attack.TraceId+" lost="+reason); }
         }
         internal static void Configure() { ControllerAim.AttackResolver = Resolve; ControllerAim.AttackOwnershipLost = LoseOwnership; }
         // Apply the default only when the gadget starts, never while refreshing
@@ -86,7 +118,7 @@ namespace ControllerSupport
         {
             Configure(); Enabled=!Enabled;
             if(!Enabled) { ClearAppliedVisual(); StaffTargetCrosshair.Clear(); }
-            Log("toggle enabled="+Enabled);
+            if(Trace!=null) Log("toggle enabled="+Enabled);
             if(!Enabled) Invalidate();
             if(Enabled && !indicator)
             {
@@ -141,16 +173,20 @@ namespace ControllerSupport
         internal static PlayerScript IteratorPlayer(object iterator)
         {
             if(iterator==null) return null;
-            foreach(FieldInfo field in iterator.GetType().GetFields(BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic))
-                if(field.FieldType==typeof(PlayerScript)) return field.GetValue(iterator) as PlayerScript;
-            return null;
+            FieldInfo field=FieldsForIterator(iterator.GetType()).Player;
+            return field==null ? null : field.GetValue(iterator) as PlayerScript;
         }
         internal static Projectile IteratorProjectile(object iterator)
         {
             if(iterator==null) return null;
-            foreach(FieldInfo field in iterator.GetType().GetFields(BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic))
-                if(field.FieldType==typeof(Projectile)) return field.GetValue(iterator) as Projectile;
-            return null;
+            FieldInfo field=FieldsForIterator(iterator.GetType()).Projectile;
+            return field==null ? null : field.GetValue(iterator) as Projectile;
+        }
+        private static IteratorFields FieldsForIterator(Type type)
+        {
+            IteratorFields fields;
+            if(!iteratorFields.TryGetValue(type,out fields)) iteratorFields[type]=fields=new IteratorFields(type);
+            return fields;
         }
         internal static void BeginAttack(object iterator)
         {
@@ -158,7 +194,7 @@ namespace ControllerSupport
             // Injected immediately after native attacking=true, beyond its guards.
             PlayerScript player=IteratorPlayer(iterator);
             bool local=Local(player);
-            Log("BeginAttack iterator="+(iterator==null?"null":iterator.GetType().FullName)+" player="+(player?player.gameObject.name:"none")+" local="+local+" enabled="+Enabled);
+            if(Trace!=null) Log("BeginAttack iterator="+(iterator==null?"null":iterator.GetType().FullName)+" player="+(player?player.gameObject.name:"none")+" local="+local+" enabled="+Enabled);
             Attack attack=local ? Acquire() : null;
             if(attack!=null)
             {
@@ -186,8 +222,7 @@ namespace ControllerSupport
         internal static bool StaffDisplayOwned(Projectile projectile)
         {
             Attack token=Retained(projectile);
-            FieldInfo controller=typeof(Projectile).GetField("isController",BindingFlags.Instance|BindingFlags.NonPublic);
-            return ControllerInputOwnership.UsingController && projectile && token!=null && Local(token.Owner) && (token.PlacementTarget || (controller!=null && (bool)controller.GetValue(projectile)));
+            return ControllerInputOwnership.UsingController && projectile && token!=null && Local(token.Owner) && (token.PlacementTarget || (ProjectileControllerField!=null && (bool)ProjectileControllerField.GetValue(projectile)));
         }
         private static Vector2 TargetVelocity(Collider target)
         {
@@ -224,7 +259,7 @@ namespace ControllerSupport
         {
             if(!ControllerInputOwnership.UsingController) { LoseOwnership(); return null; }
             var attack=new Attack { TraceId=++nextTraceId }; Vector3 aim;
-            if(!Enabled) { Log("attack="+attack.TraceId+" Acquire exit=disabled"); return attack; }
+            if(!Enabled) { if(Trace!=null) Log("attack="+attack.TraceId+" Acquire exit=disabled"); return attack; }
             if(!SafeGameplay())
             {
                 if(Trace!=null)
@@ -234,8 +269,8 @@ namespace ControllerSupport
                 }
                 return attack;
             }
-            if(!ControllerAim.TryWorldPoint(out aim)) { Log("attack="+attack.TraceId+" Acquire exit=no controller aim ownership"); return attack; }
-            if(!Camera.main) { Log("attack="+attack.TraceId+" Acquire exit=no camera"); return attack; }
+            if(!ControllerAim.TryWorldPoint(out aim)) { if(Trace!=null) Log("attack="+attack.TraceId+" Acquire exit=no controller aim ownership"); return attack; }
+            if(!Camera.main) { if(Trace!=null) Log("attack="+attack.TraceId+" Acquire exit=no camera"); return attack; }
             SearchCount++;
             Vector2 origin=PlayerCenter();
             Vector2 axis=(Vector2)aim-origin;
@@ -347,10 +382,12 @@ namespace ControllerSupport
                     if(type==null) continue;
                     Component part=transform.gameObject.GetComponent(type);
                     if(!part) continue;
-                    FieldInfo isHead=type.GetField("isMainHead");
+                    SegmentFields fields;
+                    if(!segmentFields.TryGetValue(type,out fields)) segmentFields[type]=fields=new SegmentFields(type);
+                    FieldInfo isHead=fields.IsHead;
                     if(isHead==null) return false;
                     if((bool)isHead.GetValue(part)) return Alive(part);
-                    FieldInfo main=type.GetField("mainHead");
+                    FieldInfo main=fields.MainHead;
                     GameObject head=main==null?null:main.GetValue(part) as GameObject;
                     Component receiver=head ? head.GetComponent(type) : null;
                     return receiver && (bool)isHead.GetValue(receiver) && Alive(receiver);
@@ -360,8 +397,7 @@ namespace ControllerSupport
                 Component box=HiveBox==null?null:transform.gameObject.GetComponent(HiveBox);
                 if(box)
                 {
-                    FieldInfo forward=HiveBox.GetField("p");
-                    GameObject head=forward==null?null:forward.GetValue(box) as GameObject;
+                    GameObject head=HiveForwardField==null?null:HiveForwardField.GetValue(box) as GameObject;
                     return head && Hive!=null && Alive(head.GetComponent(Hive));
                 }
             }
@@ -370,9 +406,10 @@ namespace ControllerSupport
         private static bool Alive(Component receiver)
         {
             if(!receiver || !receiver.gameObject.activeInHierarchy) return false;
-            const BindingFlags flags=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
             Type type=receiver.GetType();
-            FieldInfo hp=type.GetField("hp",flags),dying=type.GetField("dying",flags),dead=type.GetField("dead",flags);
+            HealthFields fields;
+            if(!healthFields.TryGetValue(type,out fields)) healthFields[type]=fields=new HealthFields(type);
+            FieldInfo hp=fields.Hp,dying=fields.Dying,dead=fields.Dead;
             return hp!=null && hp.GetValue(receiver) is int && (int)hp.GetValue(receiver)>0 &&
                 (dying==null || !(bool)dying.GetValue(receiver)) && (dead==null || !(bool)dead.GetValue(receiver));
         }
@@ -382,7 +419,7 @@ namespace ControllerSupport
             Attack attack=current;
             if(!Enabled || attack==null || attack.Lost) return normal;
             if(!SafeGameplay()) { Lost(attack,"unsafe gameplay"); return normal; }
-            if(!attack.Target) { if(!attack.ResolveTraced) { attack.ResolveTraced=true; Log("attack="+attack.TraceId+" Resolve fallback=no target normal="+Point(normal)); } return normal; }
+            if(!attack.Target) { if(!attack.ResolveTraced) { attack.ResolveTraced=true; if(Trace!=null) Log("attack="+attack.TraceId+" Resolve fallback=no target normal="+Point(normal)); } return normal; }
             Vector3 visual;
             if(!ControllerAim.TryWorldPoint(out visual)) { Lost(attack,"controller ownership"); return normal; }
             Vector2 origin=PlayerCenter(), axis=(Vector2)visual-origin,min,max;

@@ -1,1 +1,1 @@
-Phase 0 controller input probe and user-editable bindings. Does not change gameplay.
+Native Linux controller support with configurable bindings, combat aim-assist, exploration, inventory, and menu navigation. Build Mode and multiplayer support remain unverified or incomplete.

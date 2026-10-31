@@ -14,6 +14,7 @@ namespace ControllerSupport
         private const int Again = 11;
         private const int Interrupted = 4;
         private readonly GadgetLogger logger;
+        private readonly bool diagnostics;
         private readonly byte[] eventBytes = new byte[8];
         private readonly int[] lastLoggedAxis = new int[256];
         private readonly JoystickInputState state = new JoystickInputState();
@@ -31,9 +32,10 @@ namespace ControllerSupport
         [DllImport("libc", EntryPoint = "close", SetLastError = true)]
         private static extern int Close(int fd);
 
-        internal RawLinuxJoystickProbe(GadgetLogger logger)
+        internal RawLinuxJoystickProbe(GadgetLogger logger, bool diagnostics = false)
         {
             this.logger = logger;
+            this.diagnostics = diagnostics;
             for (int i = 0; i < lastLoggedAxis.Length; i++) lastLoggedAxis[i] = int.MinValue;
         }
 
@@ -82,6 +84,7 @@ namespace ControllerSupport
                 RawJoystickEvent joystickEvent;
                 if (!RawJoystickEvent.TryParse(eventBytes, out joystickEvent)) continue;
                 state.Apply(joystickEvent);
+                if (!diagnostics) continue;
                 string initial = joystickEvent.Initial ? " initial" : "";
                 if (joystickEvent.Type == 1)
                 {

@@ -9,4 +9,4 @@ scene/mode/local-player guards and fresh-release requirements. Same-frame raw
 press/release taps are covered. Native effect/cost routing and ten input reads
 are separately verified against installed assembly IL by phase51_native_il_repro.
 
-Run `dotnet run --project Mods/ControllerSupport/tests/gameplay_actions_repro/GameplayActionsRepro.csproj`.
+Run `dotnet run --project tests/gameplay_actions_repro/GameplayActionsRepro.csproj -p:UseSharedCompilation=false`.

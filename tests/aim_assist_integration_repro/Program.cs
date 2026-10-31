@@ -25,6 +25,40 @@ internal static class Program {
  private static Vector3 Point(){return ControllerAim.AttackMousePosition();}
  private static void Next(){Time.frameCount++;Time.unscaledTime+=.5f;}
  private static MethodInfo Private(Type t,string n)=>t.GetMethod(n,BindingFlags.Static|BindingFlags.NonPublic);
+ private static void ReflectionMetadataReadsLiveState(){
+  Setup();Check(ControllerAimAssist.Trace==null,"normal session has no verbose aim sink");
+  var iterator=new AttackToken{Player=local};
+  Check(ReferenceEquals(ControllerAimAssist.IteratorPlayer(iterator),local),"iterator metadata resolves original owner");
+  var replacement=new GameObject("replacement-player").AddComponent<PlayerScript>();iterator.Player=replacement;
+  Check(ReferenceEquals(ControllerAimAssist.IteratorPlayer(iterator),replacement),"cached iterator metadata reads replaced owner live");
+  var projectile=new GameObject("metadata-staff").AddComponent<Projectile>();
+  var projectileIterator=new Projectile.UpdatePosToken{Owner=projectile};
+  Check(ReferenceEquals(ControllerAimAssist.IteratorProjectile(projectileIterator),projectile),"projectile iterator resolves its own field type");
+  projectileIterator.Owner=null;
+  Check(ControllerAimAssist.IteratorProjectile(projectileIterator)==null,"cached projectile metadata observes cleared owner");
+  Check(ControllerAimAssist.IteratorPlayer(projectileIterator)==null&&ControllerAimAssist.IteratorProjectile(iterator)==null,"iterator types cannot borrow another cached owner field");
+  Check(ControllerAimAssist.IteratorPlayer(new Helper())==null&&ControllerAimAssist.IteratorPlayer(new Helper())==null,"missing owner metadata remains fail-closed across instances");
+  Check(ControllerAimAssist.IteratorPlayer(null)==null&&ControllerAimAssist.IteratorProjectile(null)==null,"null iterators remain unsupported");
+  var health=Private(typeof(ControllerAimAssist),"Alive");
+  var hive=new GameObject("metadata-hive").AddComponent<Hivemind>();hive.hp=10;
+  Check((bool)health.Invoke(null,new object[]{hive}),"health metadata reads living receiver");hive.hp=0;
+  Check(!(bool)health.Invoke(null,new object[]{hive}),"cached health metadata observes changed HP");hive.hp=10;hive.dying=true;
+  Check(!(bool)health.Invoke(null,new object[]{hive}),"cached health metadata observes changed dying state");hive.dying=false;hive.dead=true;
+  Check(!(bool)health.Invoke(null,new object[]{hive}),"cached health metadata observes changed dead state");
+  var otherHive=new GameObject("other-metadata-hive").AddComponent<Hivemind>();otherHive.hp=10;
+  Check((bool)health.Invoke(null,new object[]{otherHive}),"cached health metadata reads each receiver independently");
+  var noHealth=new GameObject("metadata-no-health").AddComponent<HivemindBox>();
+  Check(!(bool)health.Invoke(null,new object[]{noHealth}),"receiver with no HP metadata remains unsupported");
+  ControllerAimAssist.CaptureStaff(projectile,local);projectile.SetController(false);
+  Check(!ControllerAimAssist.StaffDisplayOwned(projectile),"cached staff metadata reads disabled controller flag");projectile.SetController(true);
+  Check(ControllerAimAssist.StaffDisplayOwned(projectile),"cached staff metadata observes enabled controller flag");projectile.SetController(false);
+  Check(!ControllerAimAssist.StaffDisplayOwned(projectile),"cached staff metadata observes subsequent flag change");
+  Setup();var target=Enemy(8,.4f);Physics.Candidates=new[]{target};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
+  var assisted=Point();Check(ControllerAimAssist.Current.Target==target&&assisted.y>.1f&&ControllerAimAssist.Trace==null,"diagnostics-off attack still acquires and applies assistance");
+  Setup();var messages=new List<string>();ControllerAimAssist.Trace=messages.Add;target=Enemy(8,.4f);Physics.Candidates=new[]{target};ControllerAimAssist.BeginAttack(new AttackToken{Player=local});
+  Check(messages.Any(m=>m.Contains("candidate="))&&Point().y>.1f,"explicit diagnostic sink retains evidence and functional assistance");
+  ControllerAimAssist.Reset();
+ }
  private static Projectile SpawnStaff(float speed,Vector3 position) {
   var obj=new GameObject("staff-live");obj.transform.position=position;var projectile=obj.AddComponent<Projectile>();projectile.speed=speed;projectile.isStaff=true;
   object[] scope={local,Network.player,null};Private(typeof(AimAssistStaffSpawnPatch),"Prefix").Invoke(null,scope);
@@ -385,6 +419,7 @@ internal static class Program {
   int storySearches=Physics.Searches;ControllerAimAssist.Acquire();
   Check(ControllerAimAssist.Current.Target==null&&Physics.Searches==storySearches,"story modal blocks assist acquisition and clears target");
   ControllerInputOwnership.Configure(()=>true);
+  ReflectionMetadataReadsLiveState();
   Console.WriteLine("Aim assist integration: "+checks+" checks passed.");
  }
 }

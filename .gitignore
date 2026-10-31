@@ -30,3 +30,27 @@ launch.lock
 *.exe
 *.pdb
 *.zip
+
+# Preserved local research and historical evidence are not public source.
+/Reports/
+/Labs/
+/.local-research/
+/AIM-ASSIST.md
+/ALCHEMY-UI.md
+/COMBAT-CHIPS-UI.md
+/COMBAT-UI.md
+/ControllerSupportDoc.md
+/EMBLEM-FORGE-UI.md
+/FRONT-END-UI.md
+/GEAR-FORGE-UI.md
+/GEAR-MODIFICATION-UI.md
+/HISTORY.md
+/INVENTORY-UI.md
+/ITEM-TRASHER-UI.md
+/PORTAL-UI.md
+/PRISM-FORGE-UI.md
+/QUESTBOT-UI.md
+/SHIP-DROID-UI.md
+/STORY-CHOICE-UI.md
+/TODOs.md
+/ULTIMATE-FORGE-UI.md

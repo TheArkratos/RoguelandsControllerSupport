@@ -1,6 +1,6 @@
 # Inventory mouse-cursor handoff regression
 
-Run `dotnet run --project Mods/ControllerSupport/tests/inventory_cursor_position_repro/InventoryCursorPositionRepro.csproj` from the repository root.
+Run `dotnet run --project tests/inventory_cursor_position_repro/InventoryCursorPositionRepro.csproj -p:UseSharedCompilation=false` from the repository root.
 
 Compiles the unmodified native `ActionCursor` with minimal Unity stubs and the production `InventoryCursorPosition` helper. Native controller mode writes a stale controller world point; physical mouse ownership must restore held-item and hover-item positions, respecting native z. Controller hover follows selection, unrelated combat cursors remain untouched, and missing camera/game references are safe.
 

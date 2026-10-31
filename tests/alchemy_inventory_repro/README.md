@@ -3,7 +3,7 @@
 Run from the repository root:
 
 ```bash
-dotnet run --project Mods/ControllerSupport/tests/alchemy_inventory_repro
+dotnet run --project tests/alchemy_inventory_repro -p:UseSharedCompilation=false
 ```
 
 This fixture compiles the actual Alchemy `CraftingMenuContext`, shared inventory

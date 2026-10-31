@@ -3,7 +3,7 @@
 Run from the repository root:
 
 ```bash
-dotnet run --project Mods/ControllerSupport/tests/input_ownership_repro/InputOwnershipRepro.csproj -p:UseSharedCompilation=false
+dotnet run --project tests/input_ownership_repro/InputOwnershipRepro.csproj -p:UseSharedCompilation=false
 ```
 
 This fixture compiles the real shared policy, last-input arbitration, and Linux

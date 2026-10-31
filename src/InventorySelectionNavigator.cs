@@ -1,9 +1,54 @@
 using System;
 using System.Reflection;
 using UnityEngine;
+using static ControllerSupport.InventorySelectionSlots;
 
 namespace ControllerSupport
 {
+    // Selection IDs are shared by navigation and dispatch; native inventory IDs
+    // differ for hotkeys, and storage's sixth row lives after all native pages.
+    internal static class InventorySelectionSlots
+    {
+        internal const int MainSlotCount = 45;
+        internal const int HotkeySlotCount = 6;
+        internal const int StorageFirstSlot = MainSlotCount + HotkeySlotCount;
+        internal const int StorageSlotCount = 36;
+        internal const int NativeStoragePageSlotCount = 30;
+        internal const int StorageExtraRowSlotCount = StorageSlotCount - NativeStoragePageSlotCount;
+        internal const int PageFirstSlot = StorageFirstSlot + StorageSlotCount;
+        internal const int PageSlotCount = 12;
+        internal const int UpgradeSlot = PageFirstSlot + PageSlotCount;
+        internal const int SlotCount = QuestMenuContext.FirstSlot + QuestMenuContext.TargetCount;
+        internal const int GridFirstSlot = 6;
+        internal const int GridSlotCount = 30;
+        internal const int GridColumns = 6;
+        internal const int EquippedFirstSlot = GridFirstSlot + GridSlotCount;
+        internal const int EquippedSlotCount = GridColumns;
+
+        internal static bool IsGridSlot(int slot)
+        { return slot >= GridFirstSlot && slot < EquippedFirstSlot; }
+        internal static bool IsMainInventorySlot(int slot)
+        { return slot >= GridFirstSlot && slot < MainSlotCount; }
+        internal static bool IsHotkeySlot(int slot)
+        { return slot >= MainSlotCount && slot < StorageFirstSlot; }
+        internal static bool IsInventorySlot(int slot)
+        { return slot >= GridFirstSlot && slot < StorageFirstSlot; }
+        internal static bool IsStorageSlot(int slot)
+        { return slot >= StorageFirstSlot && slot < PageFirstSlot; }
+        internal static bool IsExtraStorageRowSlot(int slot)
+        { return slot >= StorageFirstSlot + NativeStoragePageSlotCount && slot < PageFirstSlot; }
+        internal static int NativeInventorySlot(int slot)
+        { return IsHotkeySlot(slot) ? slot - MainSlotCount : slot; }
+        internal static int NativeStorageSlot(int slot)
+        { return slot - StorageFirstSlot; }
+        internal static int StorageItemIndex(int slot, int page)
+        {
+            int native = NativeStorageSlot(slot);
+            return native < NativeStoragePageSlotCount ? page * NativeStoragePageSlotCount + native :
+                PageSlotCount * NativeStoragePageSlotCount + page * StorageExtraRowSlotCount + native - NativeStoragePageSlotCount;
+        }
+    }
+
     // Selection state only. Never clicks, moves, or activates an item/page.
     internal sealed class InventorySelectionNavigator
     {
@@ -11,19 +56,6 @@ namespace ControllerSupport
         // six equipped items (36..41), and three equipped droids (42..44).
         // Faith and grid slot 6
         // deliberately share a child name but have different roles/tags.
-        private const int MainSlotCount = 45;
-        private const int HotkeySlotCount = 6;
-        private const int StorageFirstSlot = MainSlotCount + HotkeySlotCount;
-        private const int StorageSlotCount = 36;
-        private const int PageFirstSlot = StorageFirstSlot + StorageSlotCount;
-        private const int PageSlotCount = 12;
-        private const int UpgradeSlot = PageFirstSlot + PageSlotCount;
-        private const int SlotCount = QuestMenuContext.FirstSlot + QuestMenuContext.TargetCount;
-        private const int GridFirstSlot = 6;
-        private const int GridSlotCount = 30;
-        private const int GridColumns = 6;
-        private const int EquippedFirstSlot = GridFirstSlot + GridSlotCount;
-        private const int EquippedSlotCount = GridColumns;
         private const float StickThreshold = 0.45f;
         private const float FirstRepeatDelay = 0.30f;
         private const float RepeatInterval = 0.12f;

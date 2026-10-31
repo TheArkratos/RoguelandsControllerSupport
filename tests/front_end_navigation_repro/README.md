@@ -1,6 +1,6 @@
 # Front-end navigation repro
 
-Run `dotnet run --project Mods/ControllerSupport/tests/front_end_navigation_repro/FrontEndNavigationRepro.csproj`
+Run `dotnet run --project tests/front_end_navigation_repro/FrontEndNavigationRepro.csproj -p:UseSharedCompilation=false`
 from the repository root. This compiles the production `ControllerFrontEndMenus.cs`
 against narrow Unity/GadgetCore stubs and invokes its actual menu collection and
 direction-step logic. No game or save is touched.
