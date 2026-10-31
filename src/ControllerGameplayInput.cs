@@ -107,13 +107,11 @@ namespace ControllerSupport
             }
             // Logical UI consumption must not masquerade as a released trigger.
             if (bindings == null || !bindings.Held("PrimaryAction", state)) attackRequiresRelease = false;
-            // Unity's legacy A=Jump edge and Linux joystick events can arrive in
-            // different frames. A menu owns jump independently of raw button-held
-            // state, and closing it cannot turn a confirm into a gameplay press.
-            // Test physical state directly: consumed bindings are not releases.
+            // A menu owns configured Jump until its actual binding is released.
+            // Legacy Unity pad edges are filtered by source below, so their
+            // independently sampled press/release timing cannot rearm this gate.
             if (InventoryOwnsInput() || GameScript.pausing) jumpRequiresRelease = true;
-            else if ((bindings == null || !bindings.Held("Jump", state)) &&
-                !PhysicalButtonActive(0) && !Input.GetButtonDown("Jump")) jumpRequiresRelease = false;
+            else if (bindings == null || !bindings.Held("Jump", state)) jumpRequiresRelease = false;
             return true;
         }
 
@@ -220,6 +218,26 @@ namespace ControllerSupport
                 (kind != 1 || ownershipEntryFrame != Time.frameCount) && (kind == 1 ? bindings.Pressed(action, state) : bindings.Held(action, state));
         }
 
+        private static bool NativePlayerButtonDown(string name)
+        {
+            string key;
+            switch (name)
+            {
+                // Audited keyboard bindings from the supported native build's
+                // InputManager. Its same named actions also accept any pad.
+                case "Jump": key = "space"; break;
+                case "Dash Left": key = "q"; break;
+                case "Dash Right": key = "e"; break;
+                default: return Input.GetButtonDown(name);
+            }
+            // Input.GetButtonDown merges keyboard and legacy pad sources. Raw
+            // Linux and Unity edges have independent timing, so raw ButtonHeld
+            // cannot identify the origin of a late Unity edge. Poll even during
+            // mouse/keyboard ownership: a connected pad's aliases remain mixed.
+            JoystickInputState raw = stateProvider == null ? null : stateProvider();
+            return raw != null && raw.Connected ? Input.GetKeyDown(key) : Input.GetButtonDown(name);
+        }
+
         // These signatures deliberately mirror the Unity calls replaced by
         // GameplayInputPatches. Vanilla input is ORed in outside an owned modal UI.
         internal static bool PlayerButton(string name)
@@ -247,7 +265,7 @@ namespace ControllerSupport
                 jumpRequiresRelease = true;
                 return false;
             }
-            bool vanilla = Input.GetButtonDown(name);
+            bool vanilla = NativePlayerButtonDown(name);
             if (!Refresh()) return vanilla;
             // Native menu opening can happen after another adapter refreshed
             // this frame. Modal ownership must stay live across that cache.
@@ -257,18 +275,14 @@ namespace ControllerSupport
                 case "Left": return vanilla || leftPressed;
                 case "Right": return vanilla || rightPressed;
                 case "Down": return vanilla || downPressed;
-                // The game's legacy pad mapping has Y=Up and A=Jump.
-                // Keyboard ownership returns native values above. While the
-                // controller owns a menu, jump is blocked independently of raw
-                // A timing; gameplay still filters the legacy A alias.
+                // Up retains its existing native-filter policy. Jump and dash
+                // keyboard edges have already been separated from pad aliases.
                 case "Up": return vanilla && !state.ButtonHeld(2) && !state.ButtonHeld(3) && !MenuInputHeld();
-                case "Jump": return !jumpRequiresRelease &&
-                    ((vanilla && !PhysicalButtonActive(0) && !MenuInputHeld()) ||
-                    (SafeActions() && BoundPressed("Jump")));
-                // Vanilla also maps LB/RB to separate dash directions.
-                case "Dash Left": return (vanilla && !state.ButtonHeld(4) && !MenuInputHeld()) ||
+                case "Jump": return (vanilla && !InventoryOwnsInput() && !GameScript.pausing) ||
+                    (!jumpRequiresRelease && SafeActions() && BoundPressed("Jump"));
+                case "Dash Left": return (vanilla && !MenuInputHeld()) ||
                     (SafeActions() && left && BoundPressed("Dash"));
-                case "Dash Right": return (vanilla && !state.ButtonHeld(5) && !MenuInputHeld()) ||
+                case "Dash Right": return (vanilla && !MenuInputHeld()) ||
                     (SafeActions() && right && BoundPressed("Dash"));
                 default: return vanilla;
             }

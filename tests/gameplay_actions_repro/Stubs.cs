@@ -4,7 +4,9 @@ namespace UnityEngine {
  public static class Application { public static int loadedLevel; }
  public static class Input {
   public static readonly HashSet<string> Down=new HashSet<string>();
-  public static bool GetButtonDown(string name){return Down.Contains(name);}
+  public static readonly HashSet<string> KeysDown = new HashSet<string>();
+        public static bool GetKeyDown(string key) { return KeysDown.Contains(key); }
+        public static bool GetButtonDown(string name){return Down.Contains(name);}
   public static readonly HashSet<string> Held=new HashSet<string>(), Up=new HashSet<string>();
   public static readonly Dictionary<string,float> Axes=new Dictionary<string,float>();
   public static bool GetButton(string name){return Held.Contains(name);}

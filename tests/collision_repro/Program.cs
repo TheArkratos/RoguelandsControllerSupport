@@ -43,7 +43,7 @@ internal static class Program
         Time.frameCount++;
         if (ControllerGameplayInput.PlayerInteractionButtonDown("Up", player))
             throw new Exception("X invoked the Up augment branch while already interacting.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
 
         JoystickInputState droidInput = Fresh();
         droidInput.Apply(new RawJoystickEvent { Type = 2, Number = 5, Value = 32767 });
@@ -77,13 +77,13 @@ internal static class Program
             throw new Exception("Menu still opens vanilla inventory.");
         if (!ControllerGameplayInput.GamePausePressed())
             throw new Exception("Menu did not request pause.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
         menuInput.BeginFrame();
         Time.frameCount++;
         Input.Down.Add("Inventory"); // Delayed Unity inventory edge.
         if (ControllerGameplayInput.GameButtonDown("Inventory"))
             throw new Exception("Delayed Menu inventory edge escaped.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
 
         JoystickInputState viewInput = Fresh();
         viewInput.Apply(new RawJoystickEvent { Type = 1, Number = 6, Value = 1 });
@@ -100,7 +100,7 @@ internal static class Program
         ControllerGameplayInput.SetGameUpdateContext(new GameScript());
         if (ControllerGameplayInput.GameButtonDown("Inventory"))
             throw new Exception("View escaped inventory lifecycle ownership.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
 
         JoystickInputState heldBInput = Fresh();
         heldBInput.Apply(new RawJoystickEvent { Type = 1, Number = 1, Value = 1 });
@@ -109,7 +109,7 @@ internal static class Program
         ControllerGameplayInput.SetGameUpdateContext(new GameScript());
         if (ControllerGameplayInput.GameButtonDown("Cancel"))
             throw new Exception("B escaped inventory lifecycle ownership.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
 
         JoystickInputState keyboardInput = Fresh();
         Input.Down.Add("Cancel");
@@ -117,13 +117,13 @@ internal static class Program
         ControllerGameplayInput.SetGameUpdateContext(new GameScript());
         if (!ControllerGameplayInput.GameButtonDown("Cancel"))
             throw new Exception("Keyboard-only Cancel was suppressed by held-item guard.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
         Input.Down.Add("Inventory");
         Time.frameCount++;
         ControllerGameplayInput.SetGameUpdateContext(new GameScript());
         if (!ControllerGameplayInput.GameButtonDown("Inventory"))
             throw new Exception("Keyboard-only Inventory was suppressed by held-item guard.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
         GameScript.inventoryOpen = false;
 
         JoystickInputState r3Input = Fresh();
@@ -149,10 +149,10 @@ internal static class Program
 
         JoystickInputState input = Fresh();
         Time.frameCount++;
-        Input.Down.Add("Jump"); // Keyboard-only vanilla action remains intact.
+        Input.Down.Add("Jump"); Input.KeysDown.Add("space"); // Keyboard-only vanilla action remains intact.
         if (!ControllerGameplayInput.PlayerButtonDown("Jump"))
             throw new Exception("Keyboard jump was suppressed.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
         input.Apply(new RawJoystickEvent { Type = 2, Number = 2, Value = 32767 });
         Time.frameCount++;
         if (!ControllerGameplayInput.PlayerButtonDown("Jump"))
@@ -173,7 +173,7 @@ internal static class Program
         if (ControllerGameplayInput.PlayerButtonDown("Dash Left") ||
             !ControllerGameplayInput.PlayerButtonDown("Dash Right"))
             throw new Exception("LB+right did not dash right exclusively.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
 
         input = Fresh();
         input.Apply(new RawJoystickEvent { Type = 2, Number = 0, Value = -32768 });
@@ -183,7 +183,7 @@ internal static class Program
         if (ControllerGameplayInput.PlayerButtonDown("Dash Left") ||
             ControllerGameplayInput.PlayerButtonDown("Dash Right"))
             throw new Exception("RB triggered a dash.");
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
 
         input = Fresh();
         input.Apply(new RawJoystickEvent { Type = 1, Number = 3, Value = 1 });
@@ -196,11 +196,11 @@ internal static class Program
         Time.frameCount++;
         if (!ControllerGameplayInput.ExplorationPrimaryPressed())
             throw new Exception("Neutral ownership then fresh RT must request a droid.");
-        owns=false;Input.Down.Add("Jump");Input.Down.Add("Cancel");
+        owns=false;Input.Down.Add("Jump");Input.KeysDown.Add("space");Input.Down.Add("Cancel");
         if (ControllerGameplayInput.ExplorationPrimaryPressed() || ControllerGameplayInput.ExplorationPrimaryHeld() ||
             !ControllerGameplayInput.PlayerButtonDown("Jump") || !ControllerGameplayInput.GameButtonDown("Cancel"))
             throw new Exception("Keyboard handoff leaked cached primary or suppressed native input.");
-        owns=true;Time.frameCount++;input.BeginFrame();Input.Down.Clear();
+        owns=true;Time.frameCount++;input.BeginFrame();Input.Down.Clear(); Input.KeysDown.Clear();
         if (ControllerGameplayInput.ExplorationPrimaryPressed() || ControllerGameplayInput.ExplorationPrimaryHeld())
             throw new Exception("Held RT rearmed across controller ownership handoff.");
         input.Apply(new RawJoystickEvent { Type=2,Number=5,Value=-32768 });
@@ -220,13 +220,14 @@ internal static class Program
         Input.Down.Add(namedInput); // Simulate the game's legacy joystick mapping.
         Time.frameCount++;
         bool actual = ControllerGameplayInput.PlayerButtonDown(namedInput);
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
         if (actual != expected)
             throw new Exception("Button " + button + " still invokes vanilla " + namedInput + ".");
     }
 
     private static JoystickInputState Fresh()
     {
+        Input.KeysDown.Clear();
         JoystickInputState input = new JoystickInputState();
         input.Connect();
         ControllerGameplayInput.Configure(() => input,
@@ -249,7 +250,7 @@ internal static class Program
         Time.frameCount++;
         Input.Down.Add(namedInput); // Unity legacy button edge arrives one frame later.
         bool actual = ControllerGameplayInput.PlayerButtonDown(namedInput);
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
         if (actual)
             throw new Exception("Delayed vanilla " + namedInput + " escaped while button " + button + " remained held.");
     }

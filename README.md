@@ -39,6 +39,11 @@ current mode. Aim assist starts enabled each gadget session. White aiming guides
 and red staff crosshairs show functional targeting; these do not require diagnostic
 logging. R3 has no default action.
 
+While the raw controller is connected, Jump and Dash use your configured
+controller bindings instead of the game's legacy A/LB/RB aliases. Keyboard
+Space (Jump) and Q/E (left/right Dash) remain available independently. If raw
+controller input is unavailable, these actions retain the game's native fallback.
+
 | Menu action | Default |
 | --- | --- |
 | Navigate | Stick / D-pad, depending on the menu |

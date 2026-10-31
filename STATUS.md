@@ -2,7 +2,7 @@
 
 Development source release for native Linux Roguelands with GadgetCore. No binary
 release is published yet. Earlier controller gameplay has user acceptance in an
-isolated test profile; the latest menu A-to-Jump repair and Questbot work remain
+isolated test profile; the latest Jump/Dash input-isolation fix and Questbot work remain
 pending physical acceptance. Build success and offline fixtures are separate
 from installation or gameplay verification.
 
@@ -20,12 +20,36 @@ from installation or gameplay verification.
 | Character deletion | Native deletion accepted; confirmation defaults No; offline fixtures | Detailed cancellation, handoff and reload cases |
 | Story choices | Implemented with offline coverage | Physical choice/cancel/handoff and saved consequences |
 | Questbot | Delivery, claim, Shuffle, safe reward stow and drop implemented; offline fixtures | Physical delivery/reward/XP, Shuffle, handoff and save/reload |
-| Intermittent A-button menu jump repair | Regression reproduces delayed native Jump edge; repaired behavior passes offline checks | Repeated A presses and closing menus while holding A on a real controller |
+| Legacy A-to-Jump and bumper Dash aliases | Delayed legacy edges reproduced; keyboard Space/Q/E separated from raw controller input; fix installed in the isolated profile | Repeated A/RB presses in gameplay, menus and after menu closure; configured Jump/Dash and keyboard handoff on a real controller |
 | Standalone and expanded storage | Independent DLL and optional companion bridge; paired lab/offline evidence | Clean controller-only native storage, paired sixth row, absent bridge/load order and persistence |
 | Build Mode | No controller implementation | Future work |
 | Multiplayer | Unverified | Separate acceptance work |
 
-## Current cleanup validation
+## Current input-isolation fix
+
+The previously installed candidate still allowed legacy A-to-Jump and RB-to-Dash
+events after raw button release. The new regression failed with both actions
+before repair. Unity's named input combines keyboard and joystick sources;
+checking the current raw held state cannot identify a delayed Unity event.
+
+Jump/Dash now read physical Space/Q/E for their keyboard contribution while the
+raw pad is connected, including keyboard/mouse ownership. Configured controller
+bindings retain live menu and release gates. Native fallback remains when raw
+input is disconnected or unavailable. Other named-input adapters are unchanged.
+
+The production build and all 53 regression projects pass with no failures or
+skips, including 355 menu/input ownership checks and 383 compiled native IL
+checks. All 17 Python tooling checks pass. Coverage includes delayed edges,
+ownership handoff, simultaneous keyboard input, menu update order and closure,
+disconnection, A-to-Jump remapping and directional RB-to-Dash remapping.
+
+This candidate is installed only in the existing isolated local test profile.
+A fresh complete profile backup was verified before replacement; only the mod
+ZIP changed. Save, bindings and other packages are unchanged. Receipts and hashes
+remain private. The normal game installation was not updated. No game was
+launched during repair or installation; physical acceptance is pending.
+
+## Earlier cleanup checkpoint
 
 The production build and all 53 regression projects pass after the cleanup,
 with zero failures or skips. This includes 235 aim-assist integration checks,
@@ -38,15 +62,21 @@ values or dialogue transitions. Earlier asset audits remain local research.
 The cleanup caches reflection metadata while reading live values, removes a
 duplicate cursor update, centralizes slot/action identifiers, and makes verbose
 diagnostics opt-in. The build retains the installed game's reference assemblies.
-This candidate has been built and packaged, but has not been installed or
-physically tested. Tests use fixtures and compiled/native IL, not a game profile.
+The cleanup candidate from source commit `833173e` has been rebuilt, packaged
+and installed only in the existing isolated local test profile. The fresh build
+also passes the binding/export and native IL fixtures. The current profile and
+prior package were backed up and verified first; only the mod ZIP changed,
+with save, bindings and other packages unchanged. Installation receipts remain
+private. The normal game installation was not updated. No game was launched;
+physical acceptance is pending. Tests use fixtures and compiled/native IL,
+not a game profile.
 
 ## Known limits and next acceptance work
 
 - Native Linux, one USB Xbox controller and the tested `/dev/input/js0` mapping
   are the verified input scope. Other layouts, Steam Input configurations and
   platforms require calibration and testing.
-- Finish physical menu-jump and Questbot acceptance before treating the latest
+- Finish physical Jump/Dash isolation and Questbot acceptance before treating the latest
   candidate as accepted. Verify mouse/keyboard handoff alongside controller actions.
 - Complete native storage and optional companion storage checks separately,
   using disposable items and exact quantities across save/quit/reload.

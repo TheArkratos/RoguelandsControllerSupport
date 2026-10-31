@@ -30,7 +30,7 @@ internal static class Program
     private static void Tick(Action input = null)
     {
         Time.frameCount++;
-        pad.BeginFrame(); Input.Down.Clear(); Input.MouseDown.Clear(); Input.Axes.Clear();
+        pad.BeginFrame(); Input.Down.Clear(); Input.KeysDown.Clear(); Input.MouseDown.Clear(); Input.Axes.Clear();
         if (input != null) input();
         ControllerDialogueInput.Prepare(game);
         ControllerGameplayActions.Prepare(game);
@@ -87,7 +87,7 @@ internal static class Program
         }
         Setup(); Tick(() => Button(3, true));
         Check(!ControllerGameplayInput.GameButtonDown("CombatMode"), "native NPC conversation still gates combat switching");
-        Setup(); Tick(() => { Input.Down.Add("Jump"); Input.Down.Add("CombatMode"); });
+        Setup(); Tick(() => { Input.Down.Add("Jump"); Input.KeysDown.Add("space"); Input.Down.Add("CombatMode"); });
         Check(ControllerGameplayInput.PlayerButtonDown("Jump") && ControllerGameplayInput.GameButtonDown("CombatMode"),
             "physical keyboard keeps native reads for caller-owned restrictions");
         Setup(); Tick(() => { Axis(0, short.MaxValue); Axis(2, short.MaxValue); });

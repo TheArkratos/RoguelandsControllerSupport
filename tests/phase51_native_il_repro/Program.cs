@@ -33,6 +33,20 @@ internal static class Program
         AppDomain.CurrentDomain.AssemblyResolve+=(_,e)=> { string path=Path.Combine(managed,new AssemblyName(e.Name).Name+".dll"); return File.Exists(path)?Assembly.LoadFrom(path):null; };
         game=Assembly.LoadFrom(Path.Combine(managed,"Assembly-CSharp.dll"));
         mod=Assembly.LoadFrom(Path.Combine(ModDirectory(),"build","ControllerSupport.dll"));
+        Type gameplayInput=mod.GetType("ControllerSupport.ControllerGameplayInput",true);
+        List<CodeInstruction> playerButtonDown=Read(gameplayInput.GetMethod("PlayerButtonDown",All));
+        Check(playerButtonDown.Count(i=>Call(i,"ControllerSupport.ControllerGameplayInput","NativePlayerButtonDown"))==1,
+            "Compiled gameplay adapter separates native keyboard edges from controller aliases");
+        Check(!playerButtonDown.Any(i=>Call(i,"UnityEngine.Input","GetButtonDown")),
+            "Compiled targeted gameplay adapter cannot bypass keyboard provenance helper");
+        List<CodeInstruction> nativeKeyboard=Read(gameplayInput.GetMethod("NativePlayerButtonDown",All));
+        Check(nativeKeyboard.Count(i=>Call(i,"UnityEngine.Input","GetKeyDown"))==1,
+            "Compiled keyboard provenance helper uses physical key input");
+        foreach(string key in new[]{"Jump","space","Dash Left","q","Dash Right","e"})
+            Check(nativeKeyboard.Any(i=>i.opcode==OpCodes.Ldstr&&Equals(i.operand,key)),
+                "Compiled keyboard helper retains audited named action/key: "+key);
+        Check(nativeKeyboard.Any(i=>Call(i,"UnityEngine.Input","GetButtonDown")),
+            "Compiled keyboard helper retains native fallback for unavailable raw input");
         // GadgetLoader.PatchGadget enumerates GetExportedTypes, not GetTypes.
         // A working transpiler on an internal class is never installed in-game.
         // The installed GadgetCore is x86-only PE; inspect actual DLL metadata

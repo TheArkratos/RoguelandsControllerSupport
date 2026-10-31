@@ -8,7 +8,7 @@ class Program {
  static void Check(bool v,string why){checks++;if(!v)throw new Exception(why);}
  static void Button(int n,bool held){pad.Apply(new RawJoystickEvent{Type=1,Number=(byte)n,Value=(short)(held?1:0),TimeMilliseconds=++timestamp});}
  static void Axis(int n,short value){pad.Apply(new RawJoystickEvent{Type=2,Number=(byte)n,Value=value,TimeMilliseconds=++timestamp});}
- static void Tick(Action emit=null){Time.frameCount++;pad.BeginFrame();Input.Down.Clear();if(emit!=null)emit();ControllerGameplayActions.Prepare(game);}
+ static void Tick(Action emit=null){Time.frameCount++;pad.BeginFrame();Input.Down.Clear(); Input.KeysDown.Clear();if(emit!=null)emit();ControllerGameplayActions.Prepare(game);}
  static void Setup(bool combat=false,string text=null){
   game=new GameScript();pad=new JoystickInputState();pad.Connect();toggles=0;
   GameScript.inventoryOpen=GameScript.pausing=GameScript.dead=GameScript.talking=GameScript.buildMode=PlayerScript.beaming=GadgetCoreAPI.Frozen=false;
@@ -59,7 +59,7 @@ class Program {
   bool owns=true;ControllerInputOwnership.Configure(()=>owns);Setup(true);
   Tick(()=>{Axis(0,short.MaxValue);Button(0,true);Button(9,true);});
   Check(ControllerGameplayInput.PlayerButton("Right"),"controller caches movement while owned");
-  int before=toggles;owns=false;Input.Down.Add("Jump");Input.Down.Add("Cancel");
+  int before=toggles;owns=false;Input.Down.Add("Jump");Input.KeysDown.Add("space");Input.Down.Add("Cancel");
   Check(!ControllerGameplayInput.PlayerButton("Right"),"same-frame handoff removes cached movement");
   Check(ControllerGameplayInput.PlayerButtonDown("Jump"),"keyboard Jump unchanged despite held raw A");
   Check(ControllerGameplayInput.GameButtonDown("Cancel"),"keyboard Cancel unchanged despite raw pad");
@@ -111,9 +111,9 @@ class Program {
   Tick(()=>Axis(5,short.MinValue));ControllerGameplayInput.PlayerAxis("Attack");Tick(()=>Axis(5,short.MaxValue));
   Check(ControllerGameplayInput.PlayerAxis("Attack")<0,"primary re-arms after fresh release following story");
   Input.Axes["Attack"]=-1;
-  story=true;storyOwner=false;Input.Down.Add("Inventory");Input.Down.Add("Jump");
+  story=true;storyOwner=false;Input.Down.Add("Inventory");Input.Down.Add("Jump");Input.KeysDown.Add("space");
   Check(ControllerGameplayInput.GameButtonDown("Inventory")&&ControllerGameplayInput.PlayerButtonDown("Jump")&&ControllerGameplayInput.PlayerAxis("Attack")==-1,"mouse/keyboard ownership retains exact native values with story still open");
-  Input.Down.Clear();Input.Held.Clear();Input.Up.Clear();Input.Axes.Clear();ControllerInputOwnership.Configure(()=>true);
+  Input.Down.Clear(); Input.KeysDown.Clear();Input.Held.Clear();Input.Up.Clear();Input.Axes.Clear();ControllerInputOwnership.Configure(()=>true);
   Console.WriteLine("Gameplay actions: "+checks+" checks passed.");
  }
 }

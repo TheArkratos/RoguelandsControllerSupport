@@ -33,6 +33,14 @@ edges can arrive later than raw device edges; the menu-jump regression covers
 this timing. Do not assume consuming one raw button event also consumes every
 native action associated with it.
 
+Unity's named Jump/Dash input merges keyboard and legacy joystick sources.
+Do not identify that source by checking whether a raw pad button is still held:
+Unity and Linux joystick edges can arrive in different frames. For the supported
+native build, `ControllerGameplayInput` reads physical Space/Q/E for the keyboard
+contribution while a raw pad is connected, even during keyboard/mouse ownership.
+Configured controller actions retain the live menu and release gates. If raw
+input is disconnected or unavailable, the original named-input fallback remains.
+
 The persistent probe starts at gadget initialization, including title screens.
 Verbose diagnostics are controlled by `ROGUELANDS_CONTROLLER_DIAGNOSTICS=1`;
 ordinary gameplay must not depend on diagnostic output.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed delayed legacy A-to-Jump and RB-to-Dash input after raw button release
+  or input handoff. Keyboard Space/Q/E are separated from legacy pad aliases
+  while the raw controller is connected; configured controller remaps remain active.
+
 - Removed duplicate native-cursor updates and cached reflection metadata while
   retaining live input ownership, health, credit and item-state reads.
 - Named shared inventory/storage slot ranges and menu action indices.

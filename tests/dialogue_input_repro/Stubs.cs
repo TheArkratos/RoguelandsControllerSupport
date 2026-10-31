@@ -10,6 +10,8 @@ namespace UnityEngine
         public static readonly Dictionary<string, float> Axes = new Dictionary<string, float>();
         public static readonly HashSet<int> MouseDown = new HashSet<int>();
         public static bool GetMouseButtonDown(int button) { return MouseDown.Contains(button); }
+        public static readonly HashSet<string> KeysDown = new HashSet<string>();
+        public static bool GetKeyDown(string key) { return KeysDown.Contains(key); }
         public static bool GetButtonDown(string name) { return Down.Contains(name); }
         public static bool GetButton(string name) { return false; }
         public static bool GetButtonUp(string name) { return false; }

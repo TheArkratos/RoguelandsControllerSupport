@@ -12,7 +12,7 @@ internal static class Program
     }
     private static JoystickInputState Fresh(string text = null)
     {
-        Input.Down.Clear();
+        Input.Down.Clear(); Input.KeysDown.Clear();
         GameScript.inventoryOpen = true;
         GameScript.pausing = GameScript.dead = GameScript.buildMode = GameScript.talking = false;
         var input = new JoystickInputState();
@@ -20,6 +20,76 @@ internal static class Program
         ControllerGameplayInput.Configure(() => input, BindingConfig.Parse((text ?? BindingConfig.DefaultText).Split('\n')));
         Time.frameCount++;
         return input;
+    }
+    private static void CheckLegacyPadProvenance()
+    {
+        foreach (string alias in new[] { "Jump", "Dash Left", "Dash Right" })
+        foreach (bool owns in new[] { true, false })
+        foreach (bool held in new[] { true, false })
+        foreach (int delay in new[] { 0, 1, 3 })
+        {
+            ControllerInputOwnership.Configure(() => owns);
+            var raw = Fresh(); GameScript.inventoryOpen = false;
+            ControllerGameplayInput.PlayerButtonDown(alias);
+            byte button = alias == "Jump" ? (byte)0 : alias == "Dash Left" ? (byte)4 : (byte)5;
+            raw.BeginFrame(); Time.frameCount++;
+            raw.Apply(new RawJoystickEvent { Type = 1, Number = button, Value = 1 });
+            ControllerGameplayInput.PlayerButtonDown(alias);
+            if (!held) raw.Apply(new RawJoystickEvent { Type = 1, Number = button, Value = 0 });
+            for (int frame = 0; frame <= delay; frame++)
+            {
+                raw.BeginFrame(); Time.frameCount++;
+                Check(!ControllerGameplayInput.PlayerButtonDown(alias), "neutral frame does not synthesize " + alias);
+            }
+            Input.Down.Add(alias);
+            Check(!ControllerGameplayInput.PlayerButtonDown(alias),
+                "merged legacy alias suppressed: " + alias + ", owns=" + owns + ", held=" + held + ", delay=" + delay);
+            string key = alias == "Jump" ? "space" : alias == "Dash Left" ? "q" : "e";
+            Input.Down.Clear(); Input.KeysDown.Add(key);
+            Check(ControllerGameplayInput.PlayerButtonDown(alias),
+                "actual keyboard works independently of merged alias and held raw pad: " + key + ", owns=" + owns);
+            Input.KeysDown.Clear();
+            raw.Clear(); Input.Down.Add(alias);
+            Check(ControllerGameplayInput.PlayerButtonDown(alias), "disconnected controller preserves native fallback for " + alias);
+        }
+        ControllerInputOwnership.Configure(() => true);
+        foreach (bool menuFirst in new[] { true, false })
+        foreach (string alias in new[] { "Jump", "Dash Right" })
+        {
+            var raw = Fresh(); ControllerGameplayInput.PlayerButtonDown(alias);
+            raw.BeginFrame(); Time.frameCount++;
+            raw.Apply(new RawJoystickEvent { Type = 1, Number = alias == "Jump" ? (byte)0 : (byte)5, Value = 1 });
+            if (menuFirst) ControllerGameplayInput.ConsumeInventoryInput();
+            Check(!ControllerGameplayInput.PlayerButtonDown(alias), "menu blocks pad alias in either update order");
+            if (!menuFirst) ControllerGameplayInput.ConsumeInventoryInput();
+            GameScript.inventoryOpen = false;
+            raw.Apply(new RawJoystickEvent { Type = 1, Number = alias == "Jump" ? (byte)0 : (byte)5, Value = 0 });
+            for (int frame = 0; frame < 4; frame++)
+            {
+                raw.BeginFrame(); Time.frameCount++;
+                Input.Down.Add(alias);
+                Check(!ControllerGameplayInput.PlayerButtonDown(alias), "menu close cannot replay delayed legacy alias " + alias);
+            }
+        }
+        var remappedJump = Fresh(BindingConfig.DefaultText.Replace("Jump = LeftTrigger", "Jump = Joystick1Button0")
+            .Replace("Hotkey5 = Joystick1Button0", "Hotkey5 = Unbound"));
+        GameScript.inventoryOpen = false; ControllerGameplayInput.PlayerButtonDown("Jump");
+        remappedJump.BeginFrame(); Time.frameCount++;
+        remappedJump.Apply(new RawJoystickEvent { Type = 1, Number = 0, Value = 1 }); Input.Down.Add("Jump");
+        Check(ControllerGameplayInput.PlayerButtonDown("Jump"), "explicit A-to-Jump remap remains a configured controller action");
+        foreach (short direction in new[] { short.MinValue, short.MaxValue })
+        {
+            var remappedDash = Fresh(BindingConfig.DefaultText.Replace("Dash = Joystick1Button4", "Dash = Joystick1Button5"));
+            GameScript.inventoryOpen = false; ControllerGameplayInput.PlayerButtonDown("Dash Right");
+            remappedDash.BeginFrame(); Time.frameCount++;
+            remappedDash.Apply(new RawJoystickEvent { Type = 2, Number = 0, Value = direction });
+            remappedDash.Apply(new RawJoystickEvent { Type = 1, Number = 5, Value = 1 }); Input.Down.Add("Dash Right");
+            Check(ControllerGameplayInput.PlayerButtonDown(direction < 0 ? "Dash Left" : "Dash Right"), "explicit RB Dash follows configured direction");
+            Check(!ControllerGameplayInput.PlayerButtonDown(direction < 0 ? "Dash Right" : "Dash Left"), "explicit RB Dash does not also execute its legacy direction");
+        }
+        Fresh(); ControllerGameplayInput.Configure(null, BindingConfig.Parse(BindingConfig.DefaultText.Split('\n')));
+        Input.Down.Add("Jump");
+        Check(ControllerGameplayInput.PlayerButtonDown("Jump"), "unavailable raw provider preserves native fallback");
     }
     private static void Main()
     {
@@ -71,7 +141,7 @@ internal static class Program
             confirm.BeginFrame(); Time.frameCount++;
             confirm.Apply(new RawJoystickEvent { Type = 1, Number = 0, Value = 0 });
             Check(!ControllerGameplayInput.PlayerButtonDown("Jump"), "late Unity confirm edge cannot jump on release frame");
-            confirm.BeginFrame(); Time.frameCount++; Input.Down.Clear();
+            confirm.BeginFrame(); Time.frameCount++; Input.Down.Clear(); Input.KeysDown.Clear();
             Check(!ControllerGameplayInput.PlayerButtonDown("Jump"), "neutral release rearms without jumping");
             confirm.BeginFrame(); Time.frameCount++;
             confirm.Apply(new RawJoystickEvent { Type = remapJumpToConfirm ? (byte)1 : (byte)2,
@@ -103,9 +173,10 @@ internal static class Program
         modal = false; modalConfirm.BeginFrame(); Time.frameCount++; Input.Down.Add("Jump");
         Check(!ControllerGameplayInput.PlayerButtonDown("Jump"), "story close retains confirm release gate");
         ControllerInputOwnership.Configure(() => false);
+        Input.KeysDown.Add("space");
         Check(ControllerGameplayInput.PlayerButtonDown("Jump"), "keyboard handoff is immediately native despite retained controller confirm");
         ControllerInputOwnership.Configure(() => true);
-        modalConfirm.Clear(); Time.frameCount++;
+        modalConfirm.Clear(); Input.KeysDown.Clear(); Time.frameCount++;
         Check(ControllerGameplayInput.PlayerButtonDown("Jump"), "disconnected controller leaves native Jump intact");
         foreach (bool pause in new[] { false, true })
         {
@@ -173,6 +244,7 @@ internal static class Program
         Check(ControllerGameplayInput.GameButtonDown("CombatMode"), "Keyboard secondary action preserved");
         Check(!ControllerGameplayInput.PlayerButtonDown("Jump"), "owned menu blocks jump independent of raw timing");
         ControllerInputOwnership.Configure(() => false);
+        Input.KeysDown.Add("space");
         Check(ControllerGameplayInput.PlayerButtonDown("Jump"), "keyboard ownership preserves native Jump in inventory");
         ControllerInputOwnership.Configure(() => true);
         keyboard.Apply(new RawJoystickEvent { Type = 2, Number = 0, Value = 32767 });
@@ -194,6 +266,7 @@ internal static class Program
         Check(ControllerGameplayInput.PlayerAxis("Attack") == 0f && !ControllerGameplayInput.PlayerButtonDown("Jump"),
             "recipe paging consumes both native trigger aliases without attacking or jumping");
         ControllerInputOwnership.Configure(() => false);
+        Input.KeysDown.Add("space");
         Check(ControllerGameplayInput.PlayerAxis("Attack") == -0.4f && ControllerGameplayInput.PlayerButtonDown("Jump"),
             "mouse ownership retains native axes and button values after recipe consumption");
         ControllerInputOwnership.Configure(() => true);
@@ -201,7 +274,23 @@ internal static class Program
         recipeInput.BeginFrame(); Time.frameCount++;
         Check(!ControllerGameplayInput.IsActionConsumed("PrimaryAction") && !ControllerGameplayInput.IsActionConsumed("Jump"),
             "recipe consumption expires outside its inventory frame");
-        Input.Axes.Clear(); Input.Down.Clear();
+        Input.Axes.Clear(); Input.Down.Clear(); Input.KeysDown.Clear();
+        var leakedAliases = new System.Collections.Generic.List<string>();
+        foreach (string alias in new[] { "Jump", "Dash Right" })
+        {
+            byte button = alias == "Jump" ? (byte)0 : (byte)5;
+            var raw = Fresh(); GameScript.inventoryOpen = false;
+            ControllerGameplayInput.PlayerButtonDown(alias); // arm a neutral gameplay frame
+            raw.BeginFrame(); Time.frameCount++;
+            raw.Apply(new RawJoystickEvent { Type = 1, Number = button, Value = 1 });
+            ControllerGameplayInput.PlayerButtonDown(alias);
+            raw.BeginFrame(); Time.frameCount++;
+            raw.Apply(new RawJoystickEvent { Type = 1, Number = button, Value = 0 });
+            Input.Down.Add(alias); // independent Unity edge follows raw release
+            if (ControllerGameplayInput.PlayerButtonDown(alias)) leakedAliases.Add(alias);
+        }
+        Check(leakedAliases.Count == 0, "delayed legacy pad aliases leak after raw release: " + string.Join(", ", leakedAliases));
+        CheckLegacyPadProvenance();
         Console.WriteLine("Inventory input ownership: " + checks + " checks passed.");
     }
 }

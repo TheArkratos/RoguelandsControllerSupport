@@ -10,6 +10,8 @@ namespace UnityEngine
     public static class Input
     {
         internal static readonly HashSet<string> Down = new HashSet<string>();
+        public static readonly HashSet<string> KeysDown = new HashSet<string>();
+        public static bool GetKeyDown(string key) { return KeysDown.Contains(key); }
         public static bool GetButtonDown(string name) { return Down.Contains(name); }
         public static bool GetButton(string name) { return false; }
         public static bool GetButtonUp(string name) { return false; }
