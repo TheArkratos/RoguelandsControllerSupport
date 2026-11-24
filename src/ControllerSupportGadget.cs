@@ -33,7 +33,8 @@ namespace ControllerSupport
         protected override void Initialize()
         {
             bool diagnostics = Environment.GetEnvironmentVariable("ROGUELANDS_CONTROLLER_DIAGNOSTICS") == "1";
-            probe = new InputProbe(Logger, bindings ?? BindingConfig.SafeDefaults(), diagnostics);
+            probe = new InputProbe(Logger, bindings ?? BindingConfig.SafeDefaults(), diagnostics,
+                null, GadgetPaths.TempPath);
             ControllerInputOwnership.Configure(() => probe != null && probe.UsingController, () =>
             {
                 GameScript game = InstanceTracker.GameScript;
@@ -84,7 +85,7 @@ namespace ControllerSupport
 
         public override string GetModDescription()
         {
-            return "Direct Linux controller input with combat aim-assist, configurable hotkeys, exploration, inventory, and menu navigation.";
+            return "Controller input with combat aim-assist, configurable hotkeys, exploration, inventory, and menu navigation.";
         }
     }
 }

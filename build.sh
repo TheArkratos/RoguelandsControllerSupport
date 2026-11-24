@@ -9,6 +9,31 @@ sdk_root="$(dotnet --list-sdks | awk -v version="$sdk_version" '$1 == version {s
 test -n "$sdk_root" || { echo "Cannot locate active .NET SDK $sdk_version." >&2; exit 1; }
 csc_dll="$sdk_root/$sdk_version/Roslyn/bincore/csc.dll"
 output_dir="$project_dir/build"
+variant="${1:-}"
+extra_resources=()
+case "$variant" in
+    "") ;;
+    --deck)
+        for architecture in linux-x86 linux-x86_64; do
+            native_dir="$output_dir/deck-native/$architecture"
+            for native_file in libControllerSupport-SDL2.so libControllerSupport-SDL2.so.sha256 LICENSE.txt provenance.json; do
+                test -f "$native_dir/$native_file" || { echo "Run python3 -B tools/prepare_deck_sdl2.py first (missing $architecture/$native_file)." >&2; exit 1; }
+            done
+            python3 - "$native_dir" <<'PY'
+import hashlib, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+binary = root / 'libControllerSupport-SDL2.so'
+assert hashlib.sha256(binary.read_bytes()).hexdigest() == (root / (binary.name + '.sha256')).read_text().strip(), 'SDL2 checksum mismatch'
+PY
+            extra_resources+=(
+                "/resource:$native_dir/libControllerSupport-SDL2.so,ControllerSupport.Native.$architecture.SDL2"
+                "/resource:$native_dir/libControllerSupport-SDL2.so.sha256,ControllerSupport.Native.$architecture.SDL2.sha256"
+            )
+        done
+        output_dir="$output_dir/deck"
+        ;;
+    *) echo "Usage: bash build.sh [--deck]" >&2; exit 1 ;;
+esac
 
 for reference in mscorlib.dll System.dll System.Core.dll UnityEngine.dll Assembly-CSharp.dll GadgetCore.dll 0Harmony.dll; do
     test -f "$managed_dir/$reference" || { echo "Missing reference: $managed_dir/$reference" >&2; exit 1; }
@@ -35,6 +60,7 @@ dotnet "$csc_dll" \
     /resource:"$project_dir/Assets/SelectionCorners/corner-top-right.png",ControllerSupport.SelectionCorners.corner-top-right.png \
     /resource:"$project_dir/Assets/SelectionCorners/corner-bottom-right.png",ControllerSupport.SelectionCorners.corner-bottom-right.png \
     /resource:"$project_dir/Assets/SelectionCorners/corner-bottom-left.png",ControllerSupport.SelectionCorners.corner-bottom-left.png \
+    "${extra_resources[@]}" \
     "$project_dir/Properties/AssemblyInfo.cs" \
     "${source_files[@]}"
 

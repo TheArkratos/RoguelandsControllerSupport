@@ -10,7 +10,7 @@ checks around those existing paths.
 | Area | Main files | Responsibility |
 | --- | --- | --- |
 | Lifecycle | `src/ControllerSupportGadget.cs`, `src/ProbeRunner.cs` | Configure shared services, maintain the input probe and reset native presentation on unload |
-| Device and bindings | `src/RawLinuxJoystickProbe.cs`, `src/JoystickInputState.cs`, `src/InputProbe.cs`, `src/BindingConfig.cs` | Read raw Linux events, track state/edges and interpret configured actions |
+| Device and bindings | `src/RawLinuxJoystickProbe.cs`, `src/SdlControllerBackend.cs`, `src/Sdl2NativeControllerApi.cs`, `src/MappedControllerState.cs`, `src/JoystickInputState.cs`, `src/InputProbe.cs`, `src/BindingConfig.cs` | Select one backend, normalize state/edges and interpret configured actions |
 | Ownership and gameplay | `src/LastInputSource.cs`, `src/ControllerInputOwnership.cs`, `src/ControllerGameplayInput.cs` | Decide live controller ownership, consume UI actions and adapt native gameplay input reads |
 | Selection and actions | `src/InventorySelectionNavigator.cs`, `src/ControllerMenuSelection.cs` | Discover targets, navigate, prepare native A/X/Y actions, handle repeat and request safe closure |
 | Item conservation | `src/InventoryItemLifecycle.cs`, `src/InventoryLifecyclePatches.cs` | Track exact origins, return held items, handle explicit drops/rollback and quarantine pending mutations |
@@ -44,6 +44,38 @@ input is disconnected or unavailable, the original named-input fallback remains.
 The persistent probe starts at gadget initialization, including title screens.
 Verbose diagnostics are controlled by `ROGUELANDS_CONTROLLER_DIAGNOSTICS=1`;
 ordinary gameplay must not depend on diagnostic output.
+
+The experimental `sdl2` backend is selected explicitly through
+`ROGUELANDS_CONTROLLER_BACKEND`; the legacy Linux backend remains the standard-build
+default. A separate `--deck` build embeds private Linux x86 and x86_64 SDL2 resources and
+selects SDL2 by default; an explicit backend environment setting still takes priority.
+`InputProbe` polls the selected producer once per Unity frame, including reads
+before `ProbeRunner.Update`. `SdlControllerBackend` owns selection/reconnect and
+failure containment; `Sdl2NativeControllerApi` owns native binding and balances
+only its own SDL GameController subsystem reference. It does not initialize video,
+run a second event loop, overwrite Steam filter hints, or call Steam initialization.
+`MappedControllerState` translates SDL snapshots to the existing canonical Xbox
+binding positions, preserving the gameplay/menu action interface. Initial held
+snapshots are not fresh edges or ownership activity. No raw fallback is merged
+after an SDL failure. Missing libraries disable that producer for the session.
+
+`BundledSdl2` validates the embedded checksum before extracting content-addressed
+bytes to `GadgetPaths.TempPath`, and refuses to overwrite unexpected cached bytes.
+The native resource is selected from the current process pointer size, not the
+operating system's bitness. Both ordinary 32-bit Steam launch and 64-bit native
+launch use the same ZIP without executable overrides.
+Native code is never placed in GadgetCore's managed-assembly `Libs/` scan. The
+private SDL build is loaded locally with Linux deep binding and isolated internal
+symbols. Only this private, windowless copy has joystick/controller events disabled:
+polling and hotplug still update state without filling an unconsumed event queue.
+External/system SDL overrides retain host event settings untouched.
+
+The explicit native virtual-controller smoke covers disabled-event polling and
+coexistence with a separately initialized system SDL. The standalone legacy Mono
+smoke loads the production DLL in the game's exact embedded Mono/mscorlib without
+starting Unity or game code. Neither is physical platform acceptance: Steam runtime,
+Deck visibility, actual-game focus/handoff and Windows patch-target compatibility
+still require testing on their respective runtimes.
 
 ## Menus and held items
 

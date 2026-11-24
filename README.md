@@ -14,11 +14,45 @@ assumes one controller and its tested axis layout. Windows, other layouts and
 multiplayer are unverified. Controller text entry and Build Mode are not provided;
 use a keyboard or on-screen keyboard to enter character names.
 
-Steam Deck's built-in controls have been reported completely unresponsive with
-the native Linux game. The cause is not yet reproduced or confirmed. The current
-backend reads a fixed `/dev/input/js0` device with the tested Xbox mapping;
-Steam Input compatibility is not established. Cross-platform mapped gamepad
-input is proposed, not implemented. See [STATUS.md](STATUS.md) for the plan.
+The user reports basic Steam Deck controls working with the dual-architecture
+SDL2 test ZIP, using the native 32-bit game in Steam Desktop Mode after correcting
+the active Steam controller layout. No custom launch options were needed. Steam
+Input being enabled is not enough: select a gamepad-emitting layout rather than
+a keyboard/mouse layout. Full gameplay, inventory and save acceptance remain
+pending; Windows/Proton is not supported by this package. The standard backend
+still reads a fixed `/dev/input/js0` with the tested Xbox mapping. See
+[STATUS.md](STATUS.md) for evidence and remaining checks.
+
+### Experimental mapped backend
+
+Set `ROGUELANDS_CONTROLLER_BACKEND=sdl2` in the game's launch environment to
+select SDL2 instead of the raw Linux reader. The default remains the existing
+Linux backend. Selection is fixed for the session; failed SDL loading does not
+silently mix in raw or Unity controller events. Keyboard/mouse remain available.
+On non-Linux systems the raw backend is disabled rather than calling `libc`.
+
+**The standard ZIP does not bundle SDL2.** The experiment requires a compatible native
+SDL2 library matching the **game process** architecture: Linux loads
+`libSDL2-2.0.so.0`; Windows/Proton loads a Windows `SDL2.dll`, not a Linux library.
+Developers can set `ROGUELANDS_CONTROLLER_SDL2_LIBRARY` to its full path. Native
+dependency and actual-game behavior remain separate from a system-library smoke.
+
+The dedicated **Deck test ZIP** instead embeds pinned, licensed Linux x86 and
+x86_64 SDL2 builds and automatically selects the process-matching library. Normal
+Steam launch needs no mod-specific launch options or executable changes.
+It extracts verified bytes only into
+GadgetCore's temporary directory, never its managed `Libs/` directory. Follow
+[Steam Deck test instructions](docs/STEAM-DECK-TEST.md), including current-save and
+prior-package backups. Basic controls have user-reported Deck acceptance, but this
+remains a test candidate, not a fully validated release or Windows/Proton package.
+
+SDL uses its mapped GameController controls, choosing the first openable mapped
+gamepad and retaining it until disconnect. Existing button tokens keep the tested
+Xbox positions (A/B/X/Y, bumpers, View/Menu, L3/R3), not SDL enum numbers or arbitrary
+device button numbers. Unmapped extra buttons are unavailable in this experiment.
+Steam Input should supply a gamepad layout; keyboard-emitting bindings still act
+as keyboard input. This is not direct Steam Input action integration. Device
+filter hints and the host's Steam initialization are not overridden.
 
 ## Default controls
 
@@ -108,6 +142,25 @@ active SDK through `dotnet` and writes `build/ControllerSupport.dll`. Packaging
 creates `build/ControllerSupport.zip` containing `Manifest.ini`, `ModInfo.txt`,
 `LICENSE` and the DLL. The four menu-corner PNGs are embedded in the DLL.
 Neither script installs the mod or launches the game.
+
+To prepare the separate self-contained native Deck test package:
+
+```bash
+python3 -B tools/prepare_deck_sdl2.py
+bash build.sh --deck
+bash package.sh --deck
+python3 -B tools/verify_legacy_mono.py --assembly build/deck/ControllerSupport.dll --require-embedded
+python3 -B tools/check_deck_package.py
+```
+
+Native preparation also requires Python 3.12+, CMake, Ninja and `readelf` on an
+x86_64 Linux build host; the Deck only needs the resulting ZIP. The preparation
+tool downloads checksum-pinned upstream inputs and builds only
+the controller-focused SDL2 dependency under ignored `build/`. Its license and
+portable provenance accompany `build/ControllerSupport-Deck.zip`. The ordinary
+build/package commands remain unchanged and do not enable SDL2 by default.
+The package checker validates the actual ZIP, runs its DLL in standalone game
+Mono, and checks the extracted native bytes, ABI and redistribution metadata.
 
 For manual testing, close the game and preserve a fresh copy of the current
 target save and any installed package before replacing the ZIP in

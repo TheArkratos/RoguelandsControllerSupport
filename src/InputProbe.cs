@@ -11,6 +11,9 @@ namespace ControllerSupport
         private readonly GadgetLogger logger;
         private readonly BindingConfig bindings;
         private readonly RawLinuxJoystickProbe rawLinuxProbe;
+        private readonly SdlControllerBackend sdlProbe;
+        private readonly JoystickInputState unavailableState = new JoystickInputState();
+        private int lastSdlFrame = -1;
         private readonly bool diagnostics;
         private readonly LastInputSource lastInputSource = new LastInputSource();
         private readonly KeyCode[] physicalKeyboardKeys;
@@ -24,12 +27,27 @@ namespace ControllerSupport
         private Vector3 previousMousePosition;
         private bool hasMousePosition;
 
-        internal InputProbe(GadgetLogger logger, BindingConfig bindings, bool diagnostics = false)
+        internal InputProbe(GadgetLogger logger, BindingConfig bindings, bool diagnostics = false,
+            SdlControllerBackend mappedBackend = null, string nativeCacheDirectory = null)
         {
             this.logger = logger;
             this.bindings = bindings;
             this.diagnostics = diagnostics;
-            rawLinuxProbe = new RawLinuxJoystickProbe(logger, diagnostics);
+            string backend = Environment.GetEnvironmentVariable("ROGUELANDS_CONTROLLER_BACKEND");
+            if (string.IsNullOrEmpty(backend) && BundledSdl2.Available) backend = "sdl2";
+            if (mappedBackend != null) sdlProbe = mappedBackend;
+            else if (backend == "sdl2")
+            {
+                sdlProbe = new SdlControllerBackend(new Sdl2NativeControllerApi(nativeCacheDirectory), message => logger.Log("Probe " + message));
+                logger.Log("Probe experimental SDL2 backend selected; process=" + (IntPtr.Size * 8) +
+                    "-bit; bundled=" + (BundledSdl2.Available && string.IsNullOrEmpty(
+                        Environment.GetEnvironmentVariable("ROGUELANDS_CONTROLLER_SDL2_LIBRARY"))) + ".");
+            }
+            else if ((string.IsNullOrEmpty(backend) || backend == "raw-linux") &&
+                Environment.OSVersion.Platform == PlatformID.Unix)
+                rawLinuxProbe = new RawLinuxJoystickProbe(logger, diagnostics);
+            else
+                logger.LogWarning("Controller backend unavailable or unrecognized. Set ROGUELANDS_CONTROLLER_BACKEND=sdl2 for the experimental mapped backend; raw-linux is Linux-only.", false);
             if (diagnostics)
                 for (int i = 0; i < buttons.Length; i++)
                     buttons[i] = (KeyCode)Enum.Parse(typeof(KeyCode), "Joystick1Button" + i);
@@ -52,14 +70,29 @@ namespace ControllerSupport
         internal JoystickInputState PollState()
         {
             // Game methods may update before ProbeRunner in a Unity frame.
-            rawLinuxProbe.Update();
+            JoystickInputState state;
+            if (sdlProbe != null)
+            {
+                if (lastSdlFrame != Time.frameCount)
+                {
+                    lastSdlFrame = Time.frameCount;
+                    sdlProbe.Update(unchecked((uint)(Time.unscaledTime * 1000f)));
+                }
+                state = sdlProbe.State;
+            }
+            else if (rawLinuxProbe != null)
+            {
+                rawLinuxProbe.Update();
+                state = rawLinuxProbe.State;
+            }
+            else state = unavailableState;
             if (lastSourceFrame != Time.frameCount)
             {
                 lastSourceFrame = Time.frameCount;
-                lastInputSource.Observe(rawLinuxProbe.State.MeaningfulInputThisFrame,
+                lastInputSource.Observe(state.MeaningfulInputThisFrame,
                     PhysicalKeyboardOrMouseActivity());
             }
-            return rawLinuxProbe.State;
+            return state;
         }
 
         private bool PhysicalKeyboardOrMouseActivity()
@@ -88,7 +121,7 @@ namespace ControllerSupport
                     if (name != joystickName)
                     {
                         joystickName = name;
-                        logger.Log("Probe joystick 1: " + name + ". Other controllers ignored.");
+                        logger.Log("Probe Unity diagnostic joystick 1: " + name + ". Not an authoritative device selection.");
                     }
                 }
                 catch (Exception error)
@@ -98,7 +131,7 @@ namespace ControllerSupport
                 }
             }
 
-            // Raw polling and device ownership above are functional. Legacy-axis
+            // Selected backend polling and ownership above are functional. Legacy-axis
             // and button enumeration below are calibration diagnostics only.
             if (!diagnostics) return;
             for (int i = 0; i < buttons.Length; i++)
@@ -143,7 +176,8 @@ namespace ControllerSupport
 
         public void Dispose()
         {
-            rawLinuxProbe.Dispose();
+            if (rawLinuxProbe != null) rawLinuxProbe.Dispose();
+            if (sdlProbe != null) sdlProbe.Dispose();
             lastInputSource.Reset();
         }
     }

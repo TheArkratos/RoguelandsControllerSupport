@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/InputProbe.cs" />
+    <Compile Include="../../src/SdlControllerBackend.cs" />
+    <Compile Include="../../src/MappedControllerState.cs" />
+    <Compile Include="../../src/Sdl2NativeControllerApi.cs" />
+    <Compile Include="../../src/BundledSdl2.cs" />
+    <Compile Include="../../src/RawLinuxJoystickProbe.cs" />
+    <Compile Include="../../src/RawJoystickEvent.cs" />
+    <Compile Include="../../src/JoystickInputState.cs" />
+    <Compile Include="../../src/BindingConfig.cs" />
+    <Compile Include="../../src/LastInputSource.cs" />
+    <Compile Include="Stubs.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

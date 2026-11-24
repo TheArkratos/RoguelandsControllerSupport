@@ -2,8 +2,9 @@ using System;
 
 namespace ControllerSupport
 {
-    // Frame state for one Linux js device. Feed events after BeginFrame, then read
-    // the snapshot during the same frame. No Unity or device dependency here.
+    // Canonical frame state using the original Xbox/js binding positions.
+    // Both Linux events and mapped SDL snapshots feed this same action model.
+    // No Unity or device dependency here.
     internal sealed class JoystickInputState
     {
         private const float StickDeadzone = 0.15f;
@@ -35,8 +36,8 @@ namespace ControllerSupport
         internal bool RightTriggerPressed { get; private set; }
         internal bool LeftTriggerReleased { get; private set; }
         internal bool RightTriggerReleased { get; private set; }
-        // Only fresh, deliberate js0 activity counts for prompt ownership.
-        // Held buttons and Linux initialization snapshots do not count.
+        // Only fresh, deliberate activity counts for prompt ownership.
+        // Held buttons and initialization snapshots do not count.
         internal bool MeaningfulInputThisFrame { get; private set; }
 
         internal void Connect()

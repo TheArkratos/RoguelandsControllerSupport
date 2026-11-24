@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/RawJoystickEvent.cs" />
+    <Compile Include="../../src/JoystickInputState.cs" />
+    <Compile Include="../../src/MappedControllerState.cs" />
+    <Compile Include="../../src/SdlControllerBackend.cs" />
+    <Compile Include="../../src/Sdl2NativeControllerApi.cs" />
+    <Compile Include="../../src/BundledSdl2.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="NativeVirtualApi.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(DeckNativeDir)' != ''">
+    <EmbeddedResource Include="$(DeckNativeDir)/libControllerSupport-SDL2.so" LogicalName="ControllerSupport.Native.linux-x86_64.SDL2" WithCulture="false" />
+    <EmbeddedResource Include="$(DeckNativeDir)/libControllerSupport-SDL2.so.sha256" LogicalName="ControllerSupport.Native.linux-x86_64.SDL2.sha256" WithCulture="false" />
+  </ItemGroup>
+</Project>
