@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Documented the reported native Linux Steam Deck input failure and proposed
+  cross-platform SDL/Steam Input evaluation. No backend implementation or new
+  platform compatibility is claimed.
+
 - Fixed delayed legacy A-to-Jump and RB-to-Dash input after raw button release
   or input handoff. Keyboard Space/Q/E are separated from legacy pad aliases
   while the raw controller is connected; configured controller remaps remain active.

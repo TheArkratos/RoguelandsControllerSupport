@@ -14,6 +14,12 @@ assumes one controller and its tested axis layout. Windows, other layouts and
 multiplayer are unverified. Controller text entry and Build Mode are not provided;
 use a keyboard or on-screen keyboard to enter character names.
 
+Steam Deck's built-in controls have been reported completely unresponsive with
+the native Linux game. The cause is not yet reproduced or confirmed. The current
+backend reads a fixed `/dev/input/js0` device with the tested Xbox mapping;
+Steam Input compatibility is not established. Cross-platform mapped gamepad
+input is proposed, not implemented. See [STATUS.md](STATUS.md) for the plan.
+
 ## Default controls
 
 Controls change with the active screen. Menu actions consume their inputs before

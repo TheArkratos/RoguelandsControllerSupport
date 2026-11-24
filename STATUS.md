@@ -6,6 +6,97 @@ isolated test profile; the latest Jump/Dash input-isolation fix and Questbot wor
 pending physical acceptance. Build success and offline fixtures are separate
 from installation or gameplay verification.
 
+## Steam Deck report and input-backend planning — 2026-11-23
+
+- **Reported failure:** no controller controls work on Steam Deck with the native
+  Linux game. The initial Proton description was corrected; this is not a
+  confirmed Proton failure. Loader state, device enumeration and Steam Input
+  layout have not yet been captured, and the cause remains unconfirmed.
+- **Current implementation:** raw Linux joystick reads from `/dev/input/js0`
+  through `libc`, using the tested Xbox layout. Neither Deck support nor
+  Windows/Proton compatibility has been established.
+- **Desired scope:** native Linux and Windows/Proton controller support,
+  compatible with Steam Input. This is a goal, not a supported-platform claim.
+- **Proposed direction:** evaluate SDL's mapped GameController/Gamepad interface
+  with Steam Input gamepad emulation before considering direct action-based
+  Steam Input integration. SDL2 versus SDL3 is undecided pending legacy Unity/
+  Mono, native-library loading, process architecture and Steam runtime checks.
+- **Safety requirements:** one authoritative controller-state producer; preserve
+  Steam's device filtering, menu consumption/release gates, keyboard/mouse
+  handoff and held-item conservation. Do not independently merge raw, Unity and
+  SDL events from the same controller.
+- **Next evidence:** confirm gadget loading and device/input visibility on Deck;
+  establish a reproducible failure before attributing it to a particular backend.
+  Physical Linux and Windows/Proton acceptance remains separate from offline
+  fixture results.
+
+Valve documents [gamepad emulation](https://partner.steamgames.com/doc/features/steam_controller/steam_input_gamepad_emulation_bestpractices)
+as an option alongside the direct Steam Input API. Its
+[developer guide](https://partner.steamgames.com/doc/features/steam_controller/getting_started_for_devs)
+describes full action-based integration and SDL coexistence guidance.
+[SDL's mapped gamepad interface](https://wiki.libsdl.org/SDL3/CategoryGamepad)
+is the candidate for evaluation; this choice is a mod-specific recommendation,
+not a Valve requirement. Publisher-only Steamworks configuration is distinct
+from a community controller layout.
+
+This is a documentation checkpoint only. No input-backend code, build,
+installation or runtime acceptance changed during this planning session.
+Historical test counts below describe earlier checkpoints, not new test runs.
+
+## Earlier session handoff — 2026-11-02
+
+The installed source checkpoint is `3484166` (Jump/Dash input isolation), also
+pushed to GitHub. It was built and installed only in ControllerSupportLab.
+All 53 regression projects and 17 Python tooling checks passed. The current
+profile and previous ZIP were backed up before installation; only the mod ZIP
+changed at that time. Private receipts remain local. No binary release exists.
+
+The user will perform manual testing before starting the next session. No
+physical acceptance results for this candidate have been reported yet. Start
+the next session by collecting actual pass/fail observations and updating the
+checklist below; do not infer acceptance from the automated results. Preserve
+earlier accepted behavior unless the user reports a regression.
+
+### First: Jump/Dash isolation
+
+- [ ] **Gameplay:** repeatedly tap A and RB while stationary and moving. They
+  must not produce the legacy Jump/Dash actions; A's configured hotkey should
+  remain usable. Verify configured Jump/Dash (defaults LT/LB) still work.
+- [ ] **Menus and closure:** repeat in inventory, storage and Questbot, using
+  RB for paging where supported. Close while holding A or RB, then release.
+  No delayed jump/dash should follow; fresh configured actions should resume.
+- [ ] **Input handoff:** switch between controller, mouse and keyboard. Verify
+  Space Jump and Q/E Dash, including while holding controller buttons.
+- [ ] **Reconnect:** unplug/reconnect the controller and repeat the checks.
+  Keyboard fallback must work while raw input is unavailable, and configured
+  controller behavior must return after reconnection.
+
+For a failure, record the screen, movement direction, button press/release order,
+whether it occurs during a menu or after closure, and Steam Input configuration
+if known. The fix separates legacy joystick aliases from keyboard events; actual
+keyboard events emitted by external controller-mapping software need separate
+investigation if the problem persists.
+
+### Remaining manual acceptance
+
+- [ ] **Questbot:** delivery, rewards/XP exactly once, Shuffle, full-bag handling,
+  controller/mouse handoff and save/quit/reload.
+- [ ] **Item safety:** transfers, held-item return, full inventories, drops near
+  walls, close routes, rollback and persistence using disposable items.
+- [ ] **Storage compatibility:** native controller-only storage and the optional
+  SixBySixChest bridge, including absent bridge/load order and paired persistence.
+- [ ] **Combat edge cases:** neutral combat-entry aim, Valflame target changes,
+  Atalanta's Eye placement/bonus and remaining special weapon/augment effects.
+- [ ] **Story/station persistence:** saved choices and equipment, droid,
+  crafting and modification side effects; detailed cancellation/handoff cases.
+- [ ] **Multiplayer:** separate future validation; currently unverified.
+
+Build Mode controller support and controller text entry are unimplemented,
+not merely awaiting acceptance. No launch, reinstall or restore is part of this
+handoff. User testing may change the profile after the recorded installation;
+preserve its latest state before future runtime changes and never substitute
+the historical installation backup for current progress.
+
 ## Feature acceptance
 
 | Feature | Current evidence | Remaining checks |
